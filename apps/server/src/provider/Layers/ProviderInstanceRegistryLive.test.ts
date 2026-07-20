@@ -70,6 +70,8 @@ const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings =>
   binaryPath: "claude",
   homePath: "",
   customModels: [],
+  includeBuiltInModels: true,
+  customModelProfiles: {},
   launchArgs: "",
   ...overrides,
 });
@@ -123,6 +125,7 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
         [personalId]: {
           driver: codexDriverKind,
           displayName: "Codex (personal)",
+          iconKey: "claude",
           enabled: false,
           config: makeCodexConfig({
             binaryPath: "/opt/codex-personal/bin/codex",
@@ -171,9 +174,12 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
       expect(personalSnapshot.instanceId).toBe(personalId);
       expect(personalSnapshot.driver).toBe(codexDriverKind);
       expect(personalSnapshot.enabled).toBe(false);
+      expect(personalSnapshot.iconKey).toBe("claude");
       expect(personalSnapshot.continuation?.groupKey).toBe(
         "codex:home:/home/julius/.codex_personal",
       );
+      const refreshedPersonalSnapshot = yield* personal!.snapshot.refresh;
+      expect(refreshedPersonalSnapshot.iconKey).toBe("claude");
 
       const workSnapshot = yield* work!.snapshot.getSnapshot;
       expect(workSnapshot.instanceId).toBe(workId);
@@ -203,6 +209,7 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
           [ghostId]: {
             driver: ProviderDriverKind.make("ghostDriver"),
             displayName: "A fork-only driver we don't ship",
+            iconKey: "grok",
             enabled: false,
             config: { arbitrary: "payload", preserved: true },
           },
@@ -223,6 +230,7 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
         expect(ghost.instanceId).toBe(ghostId);
         expect(ghost.driver).toBe("ghostDriver");
         expect(ghost.availability).toBe("unavailable");
+        expect(ghost.iconKey).toBe("grok");
         expect(ghost.unavailableReason).toMatch(/ghostDriver/);
       }).pipe(Effect.provide(testLayer)),
   );

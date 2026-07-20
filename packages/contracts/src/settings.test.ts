@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  ClaudeSettings,
   ClientSettingsSchema,
   DEFAULT_SERVER_SETTINGS,
   ServerSettings,
@@ -10,6 +11,7 @@ import {
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
+const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
@@ -28,6 +30,58 @@ describe("ClientSettings word wrap", () => {
     expect(decoded.wordWrap).toBe(true);
     expect(decoded).not.toHaveProperty("chatWordWrap");
     expect(decoded).not.toHaveProperty("diffWordWrap");
+  });
+});
+
+describe("ClaudeSettings model catalogue configuration", () => {
+  it("decodes legacy Claude settings with built-ins and profiles defaulted", () => {
+    const decoded = decodeClaudeSettings({ customModels: [" gateway-model "] });
+
+    expect(decoded.customModels).toEqual([" gateway-model "]);
+    expect(decoded.includeBuiltInModels).toBe(true);
+    expect(decoded.customModelProfiles).toEqual({});
+  });
+
+  it("decodes custom model profile names and capabilities", () => {
+    const decoded = decodeClaudeSettings({
+      includeBuiltInModels: false,
+      customModelProfiles: {
+        "gateway-model": {
+          name: "Gateway Model",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Reasoning",
+                type: "select",
+                options: [
+                  { id: "high", label: "High", isDefault: true },
+                  { id: "xhigh", label: "Extra High" },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(decoded.includeBuiltInModels).toBe(false);
+    expect(decoded.customModelProfiles["gateway-model"]).toEqual({
+      name: "Gateway Model",
+      capabilities: {
+        optionDescriptors: [
+          {
+            id: "effort",
+            label: "Reasoning",
+            type: "select",
+            options: [
+              { id: "high", label: "High", isDefault: true },
+              { id: "xhigh", label: "Extra High" },
+            ],
+          },
+        ],
+      },
+    });
   });
 });
 

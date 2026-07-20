@@ -37,6 +37,7 @@ import {
   ProviderInstanceId,
   type ProviderInstanceConfig,
   type ProviderInstanceConfigMap,
+  type ProviderInstanceIconKey,
   type ProviderDriverKind,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -61,6 +62,7 @@ import {
   type ProviderInstanceRegistryMutatorShape,
 } from "../Services/ProviderInstanceRegistryMutator.ts";
 import type { AnyProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
+import type { ServerProviderShape } from "../Services/ServerProvider.ts";
 
 /**
  * Live registry entry: the materialized `ProviderInstance` + the fresh
@@ -101,6 +103,28 @@ const decodedConfigEnabled = (config: unknown): boolean | undefined => {
   return typeof enabled === "boolean" ? enabled : undefined;
 };
 
+const withIconKey = (
+  snapshot: ServerProvider,
+  iconKey: ProviderInstanceIconKey | undefined,
+): ServerProvider => (iconKey === undefined ? snapshot : { ...snapshot, iconKey });
+
+/**
+ * Apply the instance envelope's presentation choice at the registry boundary.
+ * Drivers remain presentation-agnostic while every live snapshot path receives
+ * the same icon key.
+ */
+export const withProviderInstanceIconKey = (
+  snapshot: ServerProviderShape,
+  iconKey: ProviderInstanceIconKey | undefined,
+): ServerProviderShape => ({
+  maintenanceCapabilities: snapshot.maintenanceCapabilities,
+  getSnapshot: snapshot.getSnapshot.pipe(Effect.map((value) => withIconKey(value, iconKey))),
+  refresh: snapshot.refresh.pipe(Effect.map((value) => withIconKey(value, iconKey))),
+  get streamChanges() {
+    return snapshot.streamChanges.pipe(Stream.map((value) => withIconKey(value, iconKey)));
+  },
+});
+
 /**
  * Build one live entry from a raw config envelope. Returns either a
  * `LiveEntry` plus undefined unavailable shadow, or a shadow snapshot and
@@ -129,6 +153,7 @@ const buildEntry = <R>(input: {
           instanceId,
           displayName: entry.displayName,
           accentColor: entry.accentColor,
+          iconKey: entry.iconKey,
           reason: `Driver '${entry.driver}' is not registered in this build.`,
         }),
       };
@@ -151,6 +176,7 @@ const buildEntry = <R>(input: {
           instanceId,
           displayName: entry.displayName,
           accentColor: entry.accentColor,
+          iconKey: entry.iconKey,
           reason: `Invalid config for instance '${rawInstanceId}': ${detail}`,
         }),
       };
@@ -189,6 +215,7 @@ const buildEntry = <R>(input: {
           instanceId,
           displayName: entry.displayName,
           accentColor: entry.accentColor,
+          iconKey: entry.iconKey,
           reason: `Driver '${entry.driver}' failed to create instance: ${createResult.failure.detail}`,
         }),
       };
@@ -197,7 +224,10 @@ const buildEntry = <R>(input: {
     return {
       kind: "live" as const,
       live: {
-        instance: createResult.success,
+        instance: {
+          ...createResult.success,
+          snapshot: withProviderInstanceIconKey(createResult.success.snapshot, entry.iconKey),
+        },
         scope: childScope,
         entry,
       },

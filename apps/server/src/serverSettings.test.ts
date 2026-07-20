@@ -186,6 +186,8 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         binaryPath: "/usr/local/bin/claude",
         homePath: "",
         customModels: ["claude-custom"],
+        includeBuiltInModels: true,
+        customModelProfiles: {},
         launchArgs: "",
       });
       assert.deepEqual(
@@ -427,6 +429,8 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         binaryPath: "/opt/homebrew/bin/claude",
         homePath: "",
         customModels: [],
+        includeBuiltInModels: true,
+        customModelProfiles: {},
         launchArgs: "",
       });
       assert.deepEqual(next.providers.opencode, {

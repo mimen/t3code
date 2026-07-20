@@ -59,7 +59,9 @@ export const hydrateCachedProvider = (input: {
   const { message: _fallbackMessage, ...fallbackWithoutMessage } = input.fallbackProvider;
   const hydratedProvider: ServerProvider = {
     ...fallbackWithoutMessage,
-    models: mergeProviderModels(input.fallbackProvider.models, input.cachedProvider.models),
+    models: input.fallbackProvider.modelsAreAuthoritative
+      ? input.fallbackProvider.models
+      : mergeProviderModels(input.fallbackProvider.models, input.cachedProvider.models),
     installed: input.cachedProvider.installed,
     version: input.cachedProvider.version,
     status: input.cachedProvider.status,

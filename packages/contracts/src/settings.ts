@@ -3,7 +3,11 @@ import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
-import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
+import {
+  DEFAULT_GIT_TEXT_GENERATION_MODEL,
+  ModelCapabilities,
+  ProviderOptionSelections,
+} from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
 
@@ -202,6 +206,12 @@ export const CodexSettings = makeProviderSettingsSchema(
 );
 export type CodexSettings = typeof CodexSettings.Type;
 
+export const ClaudeCustomModelProfile = Schema.Struct({
+  name: Schema.optional(TrimmedNonEmptyString),
+  capabilities: ModelCapabilities,
+});
+export type ClaudeCustomModelProfile = typeof ClaudeCustomModelProfile.Type;
+
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
@@ -226,6 +236,14 @@ export const ClaudeSettings = makeProviderSettingsSchema(
     ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    includeBuiltInModels: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    customModelProfiles: Schema.Record(Schema.String, ClaudeCustomModelProfile).pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     launchArgs: Schema.String.pipe(
@@ -477,6 +495,8 @@ const ClaudeSettingsPatch = Schema.Struct({
   binaryPath: Schema.optionalKey(TrimmedString),
   homePath: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  includeBuiltInModels: Schema.optionalKey(Schema.Boolean),
+  customModelProfiles: Schema.optionalKey(Schema.Record(Schema.String, ClaudeCustomModelProfile)),
   launchArgs: Schema.optionalKey(TrimmedString),
 });
 

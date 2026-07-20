@@ -511,6 +511,64 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("passes profiled custom model context and xhigh effort to query options", () => {
+    const harness = makeHarness({
+      claudeConfig: {
+        includeBuiltInModels: false,
+        customModels: ["custom-model"],
+        customModelProfiles: {
+          "custom-model": {
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  label: "Reasoning",
+                  type: "select",
+                  options: [
+                    { id: "high", label: "High", isDefault: true },
+                    { id: "xhigh", label: "Extra High" },
+                  ],
+                },
+                {
+                  id: "contextWindow",
+                  label: "Context Window",
+                  type: "select",
+                  options: [
+                    { id: "200k", label: "200k", isDefault: true },
+                    { id: "1m", label: "1M" },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("claudeAgent"),
+          "custom-model",
+          [
+            { id: "effort", value: "xhigh" },
+            { id: "contextWindow", value: "1m" },
+          ],
+        ),
+        runtimeMode: "full-access",
+      });
+
+      const createInput = harness.getLastCreateQueryInput();
+      assert.equal(createInput?.options.model, "custom-model[1m]");
+      assert.equal(createInput?.options.effort, "xhigh");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("falls back to default effort when unsupported max is requested for Sonnet 4.6", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

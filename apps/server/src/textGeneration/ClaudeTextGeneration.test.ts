@@ -255,6 +255,66 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
     ),
   );
 
+  it.effect("uses profiled custom model effort and context for text generation", () =>
+    withFakeClaudeEnv(
+      {
+        output: JSON.stringify({
+          structured_output: {
+            title: "Use profiled custom model",
+          },
+        }),
+        argsMustContain: "--model custom-model[1m] --effort xhigh",
+        claudeConfig: {
+          includeBuiltInModels: false,
+          customModels: ["custom-model"],
+          customModelProfiles: {
+            "custom-model": {
+              capabilities: {
+                optionDescriptors: [
+                  {
+                    id: "effort",
+                    label: "Reasoning",
+                    type: "select",
+                    options: [
+                      { id: "high", label: "High", isDefault: true },
+                      { id: "xhigh", label: "Extra High" },
+                    ],
+                  },
+                  {
+                    id: "contextWindow",
+                    label: "Context Window",
+                    type: "select",
+                    options: [
+                      { id: "200k", label: "200k", isDefault: true },
+                      { id: "1m", label: "1M" },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateThreadTitle({
+            cwd: process.cwd(),
+            message: "thread title",
+            modelSelection: createModelSelection(
+              ProviderInstanceId.make("claudeAgent"),
+              "custom-model",
+              [
+                { id: "effort", value: "xhigh" },
+                { id: "contextWindow", value: "1m" },
+              ],
+            ),
+          });
+
+          expect(generated.title).toBe("Use profiled custom model");
+        }),
+    ),
+  );
+
   it.effect("generates thread titles through the Claude provider", () =>
     withFakeClaudeEnv(
       {

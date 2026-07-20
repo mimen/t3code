@@ -66,11 +66,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     selectedInstanceOptions[0];
   const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
   const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
-  const duplicateDriverCount = props.instanceEntries.filter(
-    (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
-  ).length;
-  const showInstanceBadge = Boolean(activeEntry?.accentColor) || duplicateDriverCount > 1;
-
   const setIsMenuOpen = (open: boolean) => {
     props.onOpenChange?.(open);
     if (props.open === undefined) {
@@ -162,16 +157,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {activeEntry ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
+              iconKey={activeEntry.iconKey}
               displayName={activeEntry.displayName}
               accentColor={activeEntry.accentColor}
-              showBadge={showInstanceBadge}
-              className={showInstanceBadge ? "size-5" : "size-4"}
+              className="size-4"
               iconClassName={cn("size-4", props.activeProviderIconClassName)}
               indicatorBackground="var(--input)"
-              badgeClassName={cn(
-                "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3",
-                "px-0.5 text-[7px]",
-              )}
             />
           ) : null}
           <Tooltip>

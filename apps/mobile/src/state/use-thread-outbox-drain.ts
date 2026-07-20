@@ -9,6 +9,8 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   type MessageId,
+  type ModelSelection,
+  type ServerConfig,
 } from "@t3tools/contracts";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import * as Cause from "effect/Cause";
@@ -19,8 +21,9 @@ import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildProjectThreadStartTurnInput } from "../lib/projectThreadStartTurn";
 import { toUploadChatImageAttachments } from "../lib/composerImages";
 import { randomHex } from "../lib/uuid";
+import { buildModelOptions, resolveAdvertisedModelSelection } from "../lib/modelOptions";
 import { appAtomRegistry } from "./atom-registry";
-import { useProjects, useThreadShells } from "./entities";
+import { useProjects, useServerConfigs, useThreadShells } from "./entities";
 import { ensureThreadOutboxLoaded, removeThreadOutboxMessage } from "./thread-outbox";
 import {
   isQueuedThreadCreationSendable,
@@ -81,6 +84,24 @@ function settingsCommandId(message: QueuedThreadMessage, setting: string): Comma
   return CommandId.make(`${message.commandId}:${setting}`);
 }
 
+function resolveQueuedModelSelection(
+  config: ServerConfig | undefined,
+  selection: ModelSelection | undefined,
+): ModelSelection | undefined {
+  if (!selection) {
+    return undefined;
+  }
+  const provider = config?.providers.find(
+    (candidate) => candidate.instanceId === selection.instanceId,
+  );
+  if (!provider?.modelsAreAuthoritative) {
+    return selection;
+  }
+  return (
+    resolveAdvertisedModelSelection(buildModelOptions(config, selection), selection) ?? undefined
+  );
+}
+
 export function useThreadOutboxDrain(): void {
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -98,6 +119,7 @@ export function useThreadOutboxDrain(): void {
   const shellStatuses = useThreadOutboxShellStatuses();
   const threads = useThreadShells();
   const projects = useProjects();
+  const serverConfigs = useServerConfigs();
   const { connectedEnvironments } = useRemoteConnectionStatus();
   const [retryTick, setRetryTick] = useState(0);
   const retryAttemptRef = useRef(new Map<MessageId, number>());
@@ -163,7 +185,15 @@ export function useThreadOutboxDrain(): void {
 
   const sendQueuedMessage = useCallback(
     async (queuedMessage: QueuedThreadMessage, thread: EnvironmentThreadShell) => {
-      const settings = resolveQueuedThreadSettings(queuedMessage, thread);
+      const baseSettings = resolveQueuedThreadSettings(queuedMessage, thread);
+      const modelSelection = resolveQueuedModelSelection(
+        serverConfigs.get(queuedMessage.environmentId),
+        baseSettings.modelSelection,
+      );
+      if (!modelSelection) {
+        return false;
+      }
+      const settings = { ...baseSettings, modelSelection };
       const { reportFailure, completeDelivery } = makeDeliveryHelpers(queuedMessage);
 
       if (!modelSelectionsEqual(settings.modelSelection, thread.modelSelection)) {
@@ -238,6 +268,7 @@ export function useThreadOutboxDrain(): void {
       setThreadRuntimeMode,
       startTurn,
       updateThreadMetadata,
+      serverConfigs,
     ],
   );
 
@@ -247,7 +278,10 @@ export function useThreadOutboxDrain(): void {
       creation: QueuedThreadCreation,
       projectCwd: string,
     ) => {
-      const modelSelection = queuedMessage.modelSelection;
+      const modelSelection = resolveQueuedModelSelection(
+        serverConfigs.get(queuedMessage.environmentId),
+        queuedMessage.modelSelection,
+      );
       if (modelSelection === undefined) {
         return false;
       }
@@ -275,7 +309,7 @@ export function useThreadOutboxDrain(): void {
       });
       return completeDelivery(deliveryResult);
     },
-    [makeDeliveryHelpers, startTurn],
+    [makeDeliveryHelpers, serverConfigs, startTurn],
   );
 
   useEffect(() => {

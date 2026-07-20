@@ -83,6 +83,19 @@ export const ProviderInstanceId = slugSchema.pipe(Schema.brand("ProviderInstance
 export type ProviderInstanceId = typeof ProviderInstanceId.Type;
 
 /**
+ * Optional user-selected brand glyph for a provider instance. Unlike the
+ * open driver kind, icon keys are a closed cross-client presentation contract.
+ */
+export const ProviderInstanceIconKey = Schema.Literals([
+  "openai",
+  "claude",
+  "cursor",
+  "grok",
+  "opencode",
+]);
+export type ProviderInstanceIconKey = typeof ProviderInstanceIconKey.Type;
+
+/**
  * Lightweight reference identifying which driver implements an instance.
  * Carried alongside `ProviderInstanceId` on wire shapes so consumers can
  * branch on driver behavior (icons, capabilities, presentation) without
@@ -125,6 +138,7 @@ export const ProviderInstanceConfig = Schema.Struct({
   driver: ProviderDriverKind,
   displayName: Schema.optional(TrimmedNonEmptyString),
   accentColor: Schema.optional(TrimmedNonEmptyString),
+  iconKey: Schema.optional(ProviderInstanceIconKey),
   environment: Schema.optionalKey(ProviderInstanceEnvironment),
   enabled: Schema.optionalKey(Schema.Boolean),
   config: Schema.optionalKey(Schema.Unknown),

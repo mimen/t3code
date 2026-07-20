@@ -81,7 +81,11 @@ const hasModelCapabilities = (model: ServerProvider["models"][number]): boolean 
 const mergeProviderModels = (
   previousModels: ReadonlyArray<ServerProvider["models"][number]>,
   nextModels: ReadonlyArray<ServerProvider["models"][number]>,
+  modelsAreAuthoritative: boolean | undefined,
 ): ReadonlyArray<ServerProvider["models"][number]> => {
+  if (modelsAreAuthoritative) {
+    return nextModels;
+  }
   if (nextModels.length === 0 && previousModels.length > 0) {
     return previousModels;
   }
@@ -109,7 +113,11 @@ export const mergeProviderSnapshot = (
     ? nextProvider
     : {
         ...nextProvider,
-        models: mergeProviderModels(previousProvider.models, nextProvider.models),
+        models: mergeProviderModels(
+          previousProvider.models,
+          nextProvider.models,
+          nextProvider.modelsAreAuthoritative,
+        ),
       };
 
 export const mergeProviderSnapshots = (

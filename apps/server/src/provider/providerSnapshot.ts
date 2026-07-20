@@ -57,6 +57,7 @@ export interface ServerProviderPresentation {
   readonly badgeLabel?: string;
   readonly showInteractionModeToggle?: boolean;
   readonly requiresNewThreadForModelChange?: boolean;
+  readonly modelsAreAuthoritative?: boolean;
 }
 
 export type ServerProviderDraft = Omit<ServerProvider, "instanceId" | "driver">;
@@ -233,6 +234,9 @@ export function buildServerProvider(input: {
       : {}),
     ...(typeof input.presentation.requiresNewThreadForModelChange === "boolean"
       ? { requiresNewThreadForModelChange: input.presentation.requiresNewThreadForModelChange }
+      : {}),
+    ...(typeof input.presentation.modelsAreAuthoritative === "boolean"
+      ? { modelsAreAuthoritative: input.presentation.modelsAreAuthoritative }
       : {}),
     enabled: input.enabled,
     installed: input.probe.installed,

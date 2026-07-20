@@ -22,7 +22,11 @@ import { useEnvironmentServerConfig, useProjects, useThreadShells } from "../../
 import type { TurnCommandMetadata } from "../../lib/commandMetadata";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import {
+  buildModelOptions,
+  groupByProvider,
+  resolveAdvertisedModelSelection,
+} from "../../lib/modelOptions";
 import { groupProjectsByRepository } from "../../lib/repositoryGroups";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -365,11 +369,10 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     ],
   );
 
-  const selectedModel =
-    selectedProjectDraft.modelSelection ??
-    selectedProject?.defaultModelSelection ??
-    modelOptions[0]?.selection ??
-    null;
+  const selectedModel = resolveAdvertisedModelSelection(
+    modelOptions,
+    selectedProjectDraft.modelSelection ?? selectedProject?.defaultModelSelection ?? null,
+  );
   const selectedModelKey = selectedModel
     ? `${selectedModel.instanceId}:${selectedModel.model}`
     : null;
@@ -662,8 +665,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       }
       const draft = getComposerDraftSnapshot(selectedProjectDraftKey);
       const text = draft.text.trim();
-      const draftModelSelection = draft.modelSelection ?? selectedModel;
-      if (text.length === 0 || !draftModelSelection) {
+      if (text.length === 0 || !selectedModel) {
         return null;
       }
       const workspaceSelection = draft.workspaceSelection;
@@ -686,7 +688,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         commandId: CommandId.make(metadata.commandId),
         text,
         attachments: draft.attachments,
-        modelSelection: draftModelSelection,
+        modelSelection: selectedModel,
         runtimeMode: draft.runtimeMode ?? DEFAULT_RUNTIME_MODE,
         interactionMode: draft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
         creation: {

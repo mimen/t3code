@@ -37,12 +37,9 @@ import {
   getProviderOptionDescriptors,
 } from "@t3tools/shared/model";
 import {
-  getClaudeModelCapabilities,
-  isClaudeUltracodeEffort,
-  normalizeClaudeCliEffort,
-  resolveClaudeApiModelId,
-  resolveClaudeEffort,
-} from "../provider/Layers/ClaudeProvider.ts";
+  makeClaudeModelCatalog,
+  type ClaudeModelCatalog,
+} from "../provider/Layers/ClaudeModelCatalog.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
@@ -61,6 +58,7 @@ const decodeClaudeOutputEnvelope = Schema.decodeEffect(Schema.fromJsonString(Cla
 export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(function* (
   claudeSettings: ClaudeSettings,
   environment?: NodeJS.ProcessEnv,
+  modelCatalog: ClaudeModelCatalog = makeClaudeModelCatalog(claudeSettings),
 ) {
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
@@ -126,16 +124,16 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       toJsonSchemaObject(outputSchemaJson),
       "Failed to encode structured output schema.",
     );
-    const caps = getClaudeModelCapabilities(modelSelection.model);
+    const caps = modelCatalog.capabilitiesFor(modelSelection.model);
     const descriptors = getProviderOptionDescriptors({
       caps,
       selections: modelSelection.options,
     });
     const findDescriptor = (id: string) => descriptors.find((descriptor) => descriptor.id === id);
     const rawEffortSelection = getModelSelectionStringOptionValue(modelSelection, "effort");
-    const resolvedEffort = resolveClaudeEffort(caps, rawEffortSelection);
-    const cliEffort = normalizeClaudeCliEffort(resolvedEffort, modelSelection.model);
-    const ultracode = isClaudeUltracodeEffort(resolvedEffort);
+    const resolvedEffort = modelCatalog.resolveEffort(modelSelection.model, rawEffortSelection);
+    const cliEffort = modelCatalog.normalizeCliEffort(resolvedEffort, modelSelection.model);
+    const ultracode = modelCatalog.isUltracodeEffort(resolvedEffort);
     const thinkingDescriptor = findDescriptor("thinking");
     const fastModeDescriptor = findDescriptor("fastMode");
     const thinking =
@@ -166,7 +164,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--json-schema",
           jsonSchemaStr,
           "--model",
-          resolveClaudeApiModelId(modelSelection),
+          modelCatalog.resolveApiModelId(modelSelection),
           ...(cliEffort ? ["--effort", cliEffort] : []),
           ...(settingsJson ? ["--settings", settingsJson] : []),
           "--dangerously-skip-permissions",

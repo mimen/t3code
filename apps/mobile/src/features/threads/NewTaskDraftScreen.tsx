@@ -792,7 +792,7 @@ export function NewTaskDraftScreen(props: {
       return;
     }
     const draft = getComposerDraftSnapshot(draftKey);
-    const modelSelection = draft.modelSelection ?? flow.selectedModel;
+    const modelSelection = flow.selectedModel;
     const workspaceMode = draft.workspaceSelection?.mode ?? flow.workspaceMode;
     const selectedBranchName = draft.workspaceSelection?.branch ?? flow.selectedBranchName;
     const selectedWorktreePath =
@@ -988,7 +988,14 @@ export function NewTaskDraftScreen(props: {
         <ComposerToolbarTrigger
           accessibilityLabel="Model"
           disabled={isIncomingShareTransferPending}
-          iconNode={<ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />}
+          iconNode={
+            <ProviderIcon
+              provider={flow.selectedModelOption?.providerDriver}
+              iconKey={flow.selectedModelOption?.providerIconKey}
+              label={flow.selectedModelOption?.providerLabel}
+              size={16}
+            />
+          }
           label={flow.selectedModelOption?.label ?? "Model"}
         />
       </ControlPillMenu>
