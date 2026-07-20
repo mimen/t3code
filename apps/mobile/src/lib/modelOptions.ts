@@ -1,6 +1,7 @@
 import type {
   ModelCapabilities,
   ModelSelection,
+  ProviderInstanceIconKey,
   ServerConfig as T3ServerConfig,
 } from "@t3tools/contracts";
 import {
@@ -15,6 +16,7 @@ export type ModelOption = {
   readonly providerKey: string;
   readonly providerLabel: string;
   readonly providerDriver: string;
+  readonly providerIconKey?: ProviderInstanceIconKey | undefined;
   readonly capabilities: ModelCapabilities | null;
   readonly selection: ModelSelection;
 };
@@ -78,6 +80,7 @@ export function buildModelOptions(
         providerKey: provider.instanceId,
         providerLabel,
         providerDriver: provider.driver,
+        ...(provider.iconKey ? { providerIconKey: provider.iconKey } : {}),
         capabilities: model.capabilities,
         selection: normalizeSelectionOptions(
           {

@@ -42,6 +42,7 @@ import { ProviderSettingsForm } from "./ProviderSettingsForm";
 import { ProviderModelsSection } from "./ProviderModelsSection";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
+import { ProviderInstanceIconPicker } from "./ProviderInstanceIconPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import {
   getProviderVersionAdvisoryPresentation,
@@ -476,6 +477,11 @@ export function ProviderInstanceCard({
     );
   };
 
+  const updateIconKey = (value: ProviderInstanceConfig["iconKey"]) => {
+    const { iconKey: _omit, ...rest } = instance;
+    onUpdate(value ? { ...rest, iconKey: value } : rest);
+  };
+
   const updateConfig = (nextConfig: Record<string, unknown> | undefined) => {
     const { config: _omit, ...rest } = instance;
     onUpdate(
@@ -504,14 +510,13 @@ export function ProviderInstanceCard({
   const titleIconNode = driverKind ? (
     <ProviderInstanceIcon
       driverKind={driverKind}
+      iconKey={instance.iconKey}
       displayName={displayName}
       accentColor={accentColor}
-      showBadge={Boolean(accentColor)}
       statusDotClassName={statusStyle.dot}
       indicatorBackground="var(--card)"
       className="size-5"
       iconClassName="size-4 text-foreground/80"
-      badgeClassName="right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-[7px]"
     />
   ) : FallbackIconComponent ? (
     <span className="relative inline-flex size-5 shrink-0 items-center justify-center">
@@ -756,6 +761,18 @@ export function ProviderInstanceCard({
                 description="Used to distinguish this instance in picker rails and model lists."
               />
             </div>
+
+            {driverKind ? (
+              <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                <ProviderInstanceIconPicker
+                  driverKind={driverKind}
+                  displayName={displayName}
+                  value={instance.iconKey}
+                  onCommit={updateIconKey}
+                  description="Overrides this instance's driver icon across the app."
+                />
+              </div>
+            ) : null}
 
             <div className="border-t border-border/60 px-4 py-3 sm:px-5">
               <ProviderEnvironmentSection

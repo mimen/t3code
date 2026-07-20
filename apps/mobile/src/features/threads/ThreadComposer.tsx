@@ -858,7 +858,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   <ComposerToolbarTrigger
                     accessibilityLabel="Model"
                     iconNode={
-                      <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
+                      <ProviderIcon
+                        provider={currentModelOption?.providerDriver}
+                        iconKey={currentModelOption?.providerIconKey}
+                        label={currentModelOption?.providerLabel}
+                        size={16}
+                      />
                     }
                     label={currentModelOption?.label ?? currentModelSelection.model}
                   />

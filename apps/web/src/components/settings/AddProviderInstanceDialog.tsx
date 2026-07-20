@@ -7,6 +7,7 @@ import {
   ProviderInstanceId,
   ProviderDriverKind,
   type ProviderInstanceConfig,
+  type ProviderInstanceIconKey,
 } from "@t3tools/contracts";
 
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
@@ -28,6 +29,7 @@ import { RadioGroup } from "../ui/radio-group";
 import { toastManager } from "../ui/toast";
 import { DRIVER_OPTION_BY_VALUE, DRIVER_OPTIONS } from "./providerDriverMeta";
 import { ProviderSettingsForm, deriveProviderSettingsFields } from "./ProviderSettingsForm";
+import { ProviderInstanceIconPicker } from "./ProviderInstanceIconPicker";
 import { AnimatedHeight } from "../AnimatedHeight";
 
 const PROVIDER_ACCENT_SWATCHES = [
@@ -121,6 +123,7 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
   const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_DRIVER_KIND);
   const [label, setLabel] = useState("");
   const [accentColor, setAccentColor] = useState<string>("");
+  const [iconKey, setIconKey] = useState<ProviderInstanceIconKey | undefined>();
   const [instanceIdOverride, setInstanceIdOverride] = useState<string | null>(null);
   // Driver-specific config drafts keyed by driver so toggling between drivers
   // during the same dialog session does not lose in-progress input.
@@ -175,6 +178,7 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
       enabled: true,
       ...(label.trim().length > 0 ? { displayName: label.trim() } : {}),
       ...(normalizedAccentColor ? { accentColor: normalizedAccentColor } : {}),
+      ...(iconKey ? { iconKey } : {}),
       ...(hasConfig ? { config } : {}),
     };
     // `ProviderInstanceId.make` revalidates the slug; we've already checked
@@ -209,6 +213,7 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
     instanceIdError,
     label,
     accentColor,
+    iconKey,
     onOpenChange,
     settings.providerInstances,
     updateSettings,
@@ -416,6 +421,16 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
                 <span className="text-[11px] text-muted-foreground">
                   Optional marker shown in the picker.
                 </span>
+              </div>
+
+              <div className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
+                <ProviderInstanceIconPicker
+                  driverKind={driver}
+                  displayName={previewLabel}
+                  value={iconKey}
+                  onCommit={setIconKey}
+                  description="Optional brand override for this instance."
+                />
               </div>
 
               {driverSettingsFields.length > 0 ? (
