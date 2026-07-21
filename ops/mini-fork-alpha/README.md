@@ -60,7 +60,9 @@ invalidly signed eligibility artifacts fail closed.
 or stages and promotes the eligible SHA. `stage.zsh` and `promote.zsh` independently re-check that the
 candidate, `origin/main`, and eligibility ref still match, so a ref change between lifecycle steps fails
 closed. Staging builds the commit, writes `release.json` with the SHA and server version, then makes the
-release read-only. Staging builds under an explicit minimal PATH that prepends the directory of the
+release read-only. The final release is atomically moved while writable and frozen only afterward; a
+failed freeze is removed when possible and otherwise rejected on the next run as non-immutable. Staging
+builds under an explicit minimal PATH that prepends the directory of the
 configured `MINI_FORK_ALPHA_NODE_BIN`, so the configured Vite+ launcher never depends on launchd's
 ambient PATH. `promote.zsh` atomically moves `current` and
 `previous`, performs one launchd restart, and validates the active server. If descriptor validation

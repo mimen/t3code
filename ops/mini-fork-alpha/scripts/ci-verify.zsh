@@ -152,6 +152,10 @@ if stage.index("trap release_lock EXIT") > stage.index('verify_polled_candidate_
     raise SystemExit("Stage must retain its lock before candidate verification")
 if stage.index("trap release_lock EXIT") > stage.index('if [[ -e "$release" ]]; then'):
     raise SystemExit("Stage must retain its lock before immutable-release reuse")
+if stage.index('/bin/mv "$temporary_release" "$release"') > stage.index('/bin/chmod -R a-w "$release"'):
+    raise SystemExit("Stage must move a writable release before freezing it")
+if 'release_is_immutable()' not in stage or '/bin/rm -rf "$release" 2>/dev/null || true' not in stage:
+    raise SystemExit("Stage must reject or clean a release when immutable promotion fails")
 
 lib = (ops_root / "scripts" / "lib.zsh").read_text(encoding="utf-8")
 verify_start = lib.index("verify_polled_candidate_sha()")

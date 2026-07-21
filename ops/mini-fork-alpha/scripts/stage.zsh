@@ -17,10 +17,19 @@ verify_polled_candidate_sha "$sha"
 mirror="$MINI_FORK_ALPHA_ROOT/mirror.git"
 
 release="$(release_path "$sha")"
+release_is_immutable() {
+  [[ -z "$(/usr/bin/find "$release" -perm -u+w -print -quit)" ]]
+}
+
+assert_release_immutable() {
+  release_is_immutable || fail "Existing release is mutable; remove it manually before retrying."
+}
+
 if [[ -e "$release" ]]; then
   [[ -d "$release" ]] || fail "Release path exists but is not a directory."
   metadata="$(release_metadata "$release")"
   [[ "${metadata%%$'\n'*}" == "$sha" ]] || fail "Existing release metadata does not match its path."
+  assert_release_immutable
   log "stage reused immutable sha=$sha"
   print -r -- "$release"
   exit 0
@@ -76,9 +85,15 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
     handle.write("\n")
 PYTHON
 
-# A release never receives writes after this point. Mutable state lives only under DATA_DIR and state.
-/bin/chmod -R a-w "$temporary_release"
-/bin/mv "$temporary_release" "$release"
+# The final rename must happen while the staging directory is writable. Only then freeze it.
+/bin/mv "$temporary_release" "$release" || fail "Could not atomically promote the staged release."
+if ! /bin/chmod -R a-w "$release" || ! release_is_immutable; then
+  # A partial chmod can leave a mutable or unremovable tree. Try to restore ownership only
+  # for deletion; if that fails, the next stage refuses this non-immutable release.
+  /bin/chmod -R u+w "$release" 2>/dev/null || true
+  /bin/rm -rf "$release" 2>/dev/null || true
+  fail "Could not make the promoted release immutable."
+fi
 trap - EXIT INT TERM
 release_lock
 log "stage completed sha=$sha server_version=$server_version ops_version=$MINI_FORK_ALPHA_OPS_VERSION"
