@@ -10,6 +10,8 @@ sha="$4"
 parse_config_argument --config "$config_path"
 require_sha "$sha"
 acquire_lock
+trap release_lock EXIT
+trap 'release_lock; exit 130' INT TERM
 
 verify_polled_candidate_sha "$sha"
 mirror="$MINI_FORK_ALPHA_ROOT/mirror.git"

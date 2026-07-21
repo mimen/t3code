@@ -9,6 +9,10 @@ readonly MINI_FORK_ALPHA_CURL="/usr/bin/curl"
 readonly MINI_FORK_ALPHA_LAUNCHCTL="/bin/launchctl"
 readonly MINI_FORK_ALPHA_LSOF="/usr/sbin/lsof"
 readonly MINI_FORK_ALPHA_PYTHON="/usr/bin/python3"
+readonly MINI_FORK_ALPHA_ELIGIBILITY_NAMESPACE="mini-fork-alpha-eligibility"
+readonly MINI_FORK_ALPHA_ELIGIBILITY_IDENTITY="mini-fork-alpha-eligibility"
+readonly MINI_FORK_ALPHA_ELIGIBILITY_PAYLOAD_PATH="eligibility.payload"
+readonly MINI_FORK_ALPHA_ELIGIBILITY_SIGNATURE_PATH="eligibility.payload.sig"
 
 fail() {
   print -u2 -r -- "mini-fork-alpha: $*"
@@ -50,6 +54,22 @@ parse_config_argument() {
   validate_config
 }
 
+validate_eligibility_allowed_signers() {
+  [[ -f "$MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH" && -r "$MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH" ]] || fail "Eligibility allowed-signers file is not readable."
+  "$MINI_FORK_ALPHA_PYTHON" - "$MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH" <<'PYTHON'
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    lines = [line.strip() for line in handle if line.strip() and not line.lstrip().startswith("#")]
+pattern = re.compile(
+    r'^mini-fork-alpha-eligibility namespaces="mini-fork-alpha-eligibility" ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]+)?$'
+)
+if len(lines) != 1 or pattern.fullmatch(lines[0]) is None:
+    raise SystemExit("Allowed-signers file must contain exactly one pinned mini-fork-alpha-eligibility Ed25519 signer.")
+PYTHON
+}
+
 validate_config() {
   : "${MINI_FORK_ALPHA_ROOT:?Missing MINI_FORK_ALPHA_ROOT}"
   : "${MINI_FORK_ALPHA_REPOSITORY_URL:?Missing MINI_FORK_ALPHA_REPOSITORY_URL}"
@@ -58,6 +78,9 @@ validate_config() {
   : "${MINI_FORK_ALPHA_HOST:?Missing MINI_FORK_ALPHA_HOST}"
   : "${MINI_FORK_ALPHA_PORT:?Missing MINI_FORK_ALPHA_PORT}"
   : "${MINI_FORK_ALPHA_LAUNCH_AGENT_LABEL:?Missing MINI_FORK_ALPHA_LAUNCH_AGENT_LABEL}"
+  : "${MINI_FORK_ALPHA_ELIGIBLE_REF:?Missing MINI_FORK_ALPHA_ELIGIBLE_REF}"
+  : "${MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH:?Missing MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH}"
+  : "${MINI_FORK_ALPHA_SSH_KEYGEN_BIN:?Missing MINI_FORK_ALPHA_SSH_KEYGEN_BIN}"
   : "${MINI_FORK_ALPHA_SERVER_PLIST_PATH:?Missing MINI_FORK_ALPHA_SERVER_PLIST_PATH}"
   : "${MINI_FORK_ALPHA_POLL_INTERVAL_SECONDS:?Missing MINI_FORK_ALPHA_POLL_INTERVAL_SECONDS}"
   : "${MINI_FORK_ALPHA_NODE_BIN:?Missing MINI_FORK_ALPHA_NODE_BIN}"
@@ -66,6 +89,8 @@ validate_config() {
   require_absolute_path "MINI_FORK_ALPHA_ROOT" "$MINI_FORK_ALPHA_ROOT"
   require_absolute_path "MINI_FORK_ALPHA_DATA_DIR" "$MINI_FORK_ALPHA_DATA_DIR"
   require_absolute_path "MINI_FORK_ALPHA_LOG_DIR" "$MINI_FORK_ALPHA_LOG_DIR"
+  require_absolute_path "MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH" "$MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH"
+  require_absolute_path "MINI_FORK_ALPHA_SSH_KEYGEN_BIN" "$MINI_FORK_ALPHA_SSH_KEYGEN_BIN"
   require_absolute_path "MINI_FORK_ALPHA_SERVER_PLIST_PATH" "$MINI_FORK_ALPHA_SERVER_PLIST_PATH"
   require_absolute_path "MINI_FORK_ALPHA_NODE_BIN" "$MINI_FORK_ALPHA_NODE_BIN"
   require_absolute_path "MINI_FORK_ALPHA_VP_BIN" "$MINI_FORK_ALPHA_VP_BIN"
@@ -73,9 +98,12 @@ validate_config() {
   [[ "$MINI_FORK_ALPHA_POLL_INTERVAL_SECONDS" == <-> ]] || fail "Poll interval must be an integer."
   (( MINI_FORK_ALPHA_POLL_INTERVAL_SECONDS >= 60 )) || fail "Poll interval must be at least 60 seconds."
   [[ "$MINI_FORK_ALPHA_LAUNCH_AGENT_LABEL" == "com.mimen.t3code.fork-alpha" ]] || fail "Unexpected LaunchAgent label."
+  [[ "$MINI_FORK_ALPHA_ELIGIBLE_REF" == "refs/heads/mini-fork-alpha/eligible" ]] || fail "Unexpected eligibility ref."
   [[ -n "$MINI_FORK_ALPHA_HOST" && "$MINI_FORK_ALPHA_HOST" != "0.0.0.0" && "$MINI_FORK_ALPHA_HOST" != "::" ]] || fail "Host must be a specific interface."
   [[ -x "$MINI_FORK_ALPHA_NODE_BIN" ]] || fail "Configured Node binary is not executable."
   [[ -x "$MINI_FORK_ALPHA_VP_BIN" ]] || fail "Configured Vite+ binary is not executable."
+  [[ -x "$MINI_FORK_ALPHA_SSH_KEYGEN_BIN" ]] || fail "Configured ssh-keygen binary is not executable."
+  validate_eligibility_allowed_signers
 }
 
 prepare_local_directories() {
@@ -155,13 +183,85 @@ release_lock() {
   fi
 }
 
+fetch_eligibility_refs() {
+  local mirror="$MINI_FORK_ALPHA_ROOT/mirror.git"
+  local eligible_tracking_ref="refs/remotes/origin/${MINI_FORK_ALPHA_ELIGIBLE_REF#refs/heads/}"
+  if [[ ! -d "$mirror" ]]; then
+    "$MINI_FORK_ALPHA_GIT" clone --mirror "$MINI_FORK_ALPHA_REPOSITORY_URL" "$mirror" >/dev/null 2>&1 || fail "Could not create the local mirror."
+  fi
+
+  "$MINI_FORK_ALPHA_GIT" --git-dir="$mirror" fetch --prune origin \
+    "+refs/heads/main:refs/remotes/origin/main" \
+    "+${MINI_FORK_ALPHA_ELIGIBLE_REF}:${eligible_tracking_ref}" \
+    >/dev/null 2>&1 || fail "Could not refresh origin/main and the eligibility ref into the local mirror."
+}
+
+canonical_eligibility_payload() {
+  local sha="$1"
+  require_sha "$sha"
+  print -r -- "schema=1"
+  print -r -- "namespace=$MINI_FORK_ALPHA_ELIGIBILITY_NAMESPACE"
+  print -r -- "identity=$MINI_FORK_ALPHA_ELIGIBILITY_IDENTITY"
+  print -r -- "sha=$sha"
+}
+
+verify_eligibility_attestation() {
+  local sha="$1"
+  require_sha "$sha"
+  local mirror="$MINI_FORK_ALPHA_ROOT/mirror.git"
+  local eligible_tracking_ref="refs/remotes/origin/${MINI_FORK_ALPHA_ELIGIBLE_REF#refs/heads/}"
+  local payload_path="$MINI_FORK_ALPHA_ROOT/state/.eligibility.$$.payload"
+  local signature_path="$MINI_FORK_ALPHA_ROOT/state/.eligibility.$$.sig"
+
+  cleanup_eligibility_attestation() {
+    /bin/rm -f "$payload_path" "$signature_path"
+  }
+
+  "$MINI_FORK_ALPHA_GIT" --git-dir="$mirror" show "${eligible_tracking_ref}:${MINI_FORK_ALPHA_ELIGIBILITY_PAYLOAD_PATH}" > "$payload_path" 2>/dev/null || {
+    cleanup_eligibility_attestation
+    fail "Eligibility ref is missing its canonical payload."
+  }
+  "$MINI_FORK_ALPHA_GIT" --git-dir="$mirror" show "${eligible_tracking_ref}:${MINI_FORK_ALPHA_ELIGIBILITY_SIGNATURE_PATH}" > "$signature_path" 2>/dev/null || {
+    cleanup_eligibility_attestation
+    fail "Eligibility ref is missing its detached signature."
+  }
+  canonical_eligibility_payload "$sha" | /usr/bin/cmp -s - "$payload_path" || {
+    cleanup_eligibility_attestation
+    fail "Eligibility payload is malformed or does not attest the current origin/main SHA."
+  }
+  "$MINI_FORK_ALPHA_SSH_KEYGEN_BIN" -Y verify \
+    -f "$MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH" \
+    -I "$MINI_FORK_ALPHA_ELIGIBILITY_IDENTITY" \
+    -n "$MINI_FORK_ALPHA_ELIGIBILITY_NAMESPACE" \
+    -s "$signature_path" < "$payload_path" >/dev/null 2>&1 || {
+    cleanup_eligibility_attestation
+    fail "Eligibility signature verification failed."
+  }
+  cleanup_eligibility_attestation
+}
+
+fetch_and_record_eligible_candidate() {
+  fetch_eligibility_refs
+  local mirror="$MINI_FORK_ALPHA_ROOT/mirror.git"
+  local origin_main_sha
+  origin_main_sha="$("$MINI_FORK_ALPHA_GIT" --git-dir="$mirror" rev-parse --verify refs/remotes/origin/main^{commit})"
+  require_sha "$origin_main_sha"
+  "$MINI_FORK_ALPHA_GIT" --git-dir="$mirror" cat-file -e "${origin_main_sha}^{commit}" || fail "Origin/main does not resolve to a commit."
+  verify_eligibility_attestation "$origin_main_sha"
+
+  local candidate_path="$MINI_FORK_ALPHA_ROOT/state/candidate-sha"
+  print -r -- "$origin_main_sha" > "$candidate_path"
+  /bin/chmod 600 "$candidate_path"
+  print -r -- "$origin_main_sha"
+}
+
 verify_polled_candidate_sha() {
   local sha="$1"
   require_sha "$sha"
   local candidate_path="$MINI_FORK_ALPHA_ROOT/state/candidate-sha"
-  local mirror="$MINI_FORK_ALPHA_ROOT/mirror.git"
   [[ -f "$candidate_path" ]] || fail "Polled candidate is missing; run poll first."
-  [[ -d "$mirror" ]] || fail "Local mirror is missing; run poll first."
+  fetch_eligibility_refs
+  local mirror="$MINI_FORK_ALPHA_ROOT/mirror.git"
 
   local candidate_sha origin_main_sha
   candidate_sha="$(<"$candidate_path")"
@@ -171,6 +271,7 @@ verify_polled_candidate_sha() {
   origin_main_sha="$("$MINI_FORK_ALPHA_GIT" --git-dir="$mirror" rev-parse --verify refs/remotes/origin/main^{commit})"
   require_sha "$origin_main_sha"
   [[ "$origin_main_sha" == "$sha" ]] || fail "Polled candidate is no longer the current origin/main commit."
+  verify_eligibility_attestation "$sha"
 }
 
 release_path() {
