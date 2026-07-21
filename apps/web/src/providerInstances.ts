@@ -16,6 +16,7 @@ import {
   defaultInstanceIdForDriver,
   PROVIDER_DISPLAY_NAMES,
   type ProviderDriverKind,
+  type ProviderInstanceIconKey,
   type ProviderInstanceId,
   type ServerProvider,
   type ServerProviderModel,
@@ -36,6 +37,7 @@ export interface ProviderInstanceEntry {
   readonly driverKind: ProviderDriverKind;
   readonly displayName: string;
   readonly accentColor?: string | undefined;
+  readonly iconKey?: ProviderInstanceIconKey | undefined;
   readonly continuationGroupKey?: string | undefined;
   readonly enabled: boolean;
   readonly installed: boolean;
@@ -158,6 +160,7 @@ export function deriveProviderInstanceEntries(
       driverKind,
       displayName,
       accentColor: normalizeProviderAccentColor(snapshot.accentColor),
+      iconKey: snapshot.iconKey,
       continuationGroupKey: snapshot.continuation?.groupKey,
       enabled: snapshot.enabled,
       installed: snapshot.installed,

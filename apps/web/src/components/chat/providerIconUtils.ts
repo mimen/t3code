@@ -1,4 +1,4 @@
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind, type ProviderInstanceIconKey } from "@t3tools/contracts";
 import { ClaudeAI, CursorIcon, GrokIcon, Icon, OpenAI, OpenCodeIcon } from "../Icons";
 import { PROVIDER_OPTIONS } from "../../session-logic";
 
@@ -9,6 +9,24 @@ export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>
   [ProviderDriverKind.make("cursor")]: CursorIcon,
   [ProviderDriverKind.make("grok")]: GrokIcon,
 };
+
+export const PROVIDER_ICON_BY_KEY: Record<ProviderInstanceIconKey, Icon> = {
+  openai: OpenAI,
+  claude: ClaudeAI,
+  cursor: CursorIcon,
+  grok: GrokIcon,
+  opencode: OpenCodeIcon,
+};
+
+/** Resolve an explicit instance icon before falling back to the driver glyph. */
+export function resolveProviderIcon(
+  iconKey: ProviderInstanceIconKey | undefined,
+  driverKind: ProviderDriverKind,
+): Icon | undefined {
+  return (
+    (iconKey ? PROVIDER_ICON_BY_KEY[iconKey] : undefined) ?? PROVIDER_ICON_BY_PROVIDER[driverKind]
+  );
+}
 
 function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): option is {
   value: ProviderDriverKind;

@@ -90,8 +90,20 @@ describe("ProviderInstanceConfig", () => {
     const decoded = decodeProviderInstanceConfig({ driver: "codex" });
     expect(decoded.driver).toBe("codex");
     expect(decoded.displayName).toBeUndefined();
+    expect(decoded.iconKey).toBeUndefined();
     expect(decoded.enabled).toBeUndefined();
     expect(decoded.config).toBeUndefined();
+  });
+
+  it.each(["openai", "claude", "cursor", "grok", "opencode"])(
+    "accepts the %s icon override",
+    (iconKey) => {
+      expect(decodeProviderInstanceConfig({ driver: "codex", iconKey }).iconKey).toBe(iconKey);
+    },
+  );
+
+  it("rejects icon overrides outside the closed schema", () => {
+    expect(() => decodeProviderInstanceConfig({ driver: "codex", iconKey: "github" })).toThrow();
   });
 
   it("preserves driver-opaque config payloads verbatim", () => {

@@ -15,11 +15,13 @@ function provider(input: {
   enabled?: boolean;
   availability?: ServerProvider["availability"];
   displayName?: string;
+  iconKey?: ServerProvider["iconKey"];
 }): ServerProvider {
   return {
     instanceId: ProviderInstanceId.make(input.instanceId),
     driver: input.provider,
     ...(input.displayName ? { displayName: input.displayName } : {}),
+    ...(input.iconKey ? { iconKey: input.iconKey } : {}),
     enabled: input.enabled ?? true,
     installed: true,
     version: null,
@@ -117,6 +119,18 @@ describe("deriveProviderInstanceEntries", () => {
     expect(entry?.instanceId).toBe("codex_personal");
     expect(entry?.driverKind).toBe("codex");
     expect(entry?.isDefault).toBe(false);
+  });
+
+  it("preserves an icon override from the server snapshot", () => {
+    const [entry] = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("codex"),
+        instanceId: "codex_personal",
+        iconKey: "claude",
+      }),
+    ]);
+
+    expect(entry?.iconKey).toBe("claude");
   });
 });
 

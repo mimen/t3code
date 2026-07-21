@@ -182,6 +182,40 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
     );
   });
 
+  it("keeps authoritative configured models out of a stale cache", () => {
+    const cachedProvider = makeProvider(CLAUDE_AGENT_DRIVER, {
+      models: [
+        {
+          slug: "claude-opus-4-6",
+          name: "Claude Opus 4.6",
+          isCustom: false,
+          capabilities: emptyCapabilities,
+        },
+        {
+          slug: "gpt-5.6-sol[1m]",
+          name: "gpt-5.6-sol[1m]",
+          isCustom: true,
+          capabilities: emptyCapabilities,
+        },
+      ],
+    });
+    const fallbackProvider = makeProvider(CLAUDE_AGENT_DRIVER, {
+      modelsAreAuthoritative: true,
+      models: [
+        {
+          slug: "gpt-5.6-sol",
+          name: "GPT-5.6 Sol",
+          isCustom: true,
+          capabilities: emptyCapabilities,
+        },
+      ],
+    });
+
+    const hydrated = hydrateCachedProvider({ cachedProvider, fallbackProvider });
+
+    assert.deepStrictEqual(hydrated.models, fallbackProvider.models);
+  });
+
   it("ignores stale cached enabled state when the provider is now disabled", () => {
     const cachedCodex = makeProvider(CODEX_DRIVER, {
       checkedAt: "2026-04-10T12:00:00.000Z",

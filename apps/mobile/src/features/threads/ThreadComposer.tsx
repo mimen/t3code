@@ -47,7 +47,11 @@ import {
 import { ControlPill, ControlPillMenu } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import {
+  buildModelOptions,
+  groupByProvider,
+  resolveAdvertisedModelSelection,
+} from "../../lib/modelOptions";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import type { RemoteClientConnectionState } from "../../lib/connection";
 import {
@@ -268,7 +272,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
   const isExpanded = isFocused;
-  const canSend = hasContent;
 
   const onPressImage = useCallback(
     (uri: string) => {
@@ -501,30 +504,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   }, [composerTrigger, pathSearch.entries, selectedProviderStatus]);
 
   // ── Handle command selection ──────────────────────────────
-  const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage, onSendMessage } = props;
+  const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage } = props;
 
-  const handleSend = useCallback(async () => {
-    const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
-    if (inFlightThreadIdsRef.current.has(threadKey)) return;
-    inFlightThreadIdsRef.current.add(threadKey);
-    // Sending a prompt starts agent work: arm the lock-screen card now, while
-    // the app is foregrounded and the activity token can be registered.
-    armAgentAwarenessLiveActivityForLocalWork({
-      threadTitle: props.selectedThread.title,
-      projectTitle: props.environmentLabel ?? "T3 Code",
-    });
-    try {
-      await onSendMessage();
-    } finally {
-      inFlightThreadIdsRef.current.delete(threadKey);
-    }
-  }, [
-    onSendMessage,
-    props.environmentId,
-    props.environmentLabel,
-    props.selectedThread.id,
-    props.selectedThread.title,
-  ]);
   const handleCommandSelect = useCallback(
     (item: ComposerCommandItem) => {
       if (!composerTrigger) return;
@@ -573,20 +554,39 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     () => buildModelOptions(props.serverConfig, currentModelSelection),
     [props.serverConfig, currentModelSelection],
   );
+  const selectedModelSelection = resolveAdvertisedModelSelection(
+    modelOptions,
+    currentModelSelection,
+  );
+  useEffect(() => {
+    if (
+      !selectedModelSelection ||
+      (selectedModelSelection.instanceId === currentModelSelection.instanceId &&
+        selectedModelSelection.model === currentModelSelection.model &&
+        JSON.stringify(selectedModelSelection.options ?? []) ===
+          JSON.stringify(currentModelSelection.options ?? []))
+    ) {
+      return;
+    }
+    props.onUpdateModelSelection(selectedModelSelection);
+  }, [currentModelSelection, props.onUpdateModelSelection, selectedModelSelection]);
+
+  const canSend = hasContent && selectedModelSelection !== null;
+  const activeModelSelection = selectedModelSelection ?? currentModelSelection;
   const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
   const currentModelOption =
     modelOptions.find(
       (option) =>
-        option.selection.instanceId === currentModelSelection.instanceId &&
-        option.selection.model === currentModelSelection.model,
+        option.selection.instanceId === activeModelSelection.instanceId &&
+        option.selection.model === activeModelSelection.model,
     ) ?? null;
   const providerOptionDescriptors = useMemo(
     () =>
       resolveProviderOptionDescriptors({
         capabilities: currentModelOption?.capabilities,
-        selections: currentModelSelection.options,
+        selections: activeModelSelection.options,
       }),
-    [currentModelOption?.capabilities, currentModelSelection.options],
+    [activeModelSelection.options, currentModelOption?.capabilities],
   );
   const configurationLabel = useMemo(
     () => providerOptionsConfigurationLabel(providerOptionDescriptors),
@@ -599,20 +599,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         title: group.providerLabel,
         subtitle: group.models.find(
           (model) =>
-            model.selection.instanceId === currentModelSelection.instanceId &&
-            model.selection.model === currentModelSelection.model,
+            model.selection.instanceId === activeModelSelection.instanceId &&
+            model.selection.model === activeModelSelection.model,
         )?.label,
         subactions: group.models.map((option) => ({
           id: `model:${option.key}`,
           title: option.label,
           state:
-            option.selection.instanceId === currentModelSelection.instanceId &&
-            option.selection.model === currentModelSelection.model
+            option.selection.instanceId === activeModelSelection.instanceId &&
+            option.selection.model === activeModelSelection.model
               ? ("on" as const)
               : undefined,
         })),
       })),
-    [providerGroups, currentModelSelection],
+    [activeModelSelection, providerGroups],
   );
 
   // ── Options menu ─────────────────────────────────────────
@@ -677,7 +677,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     const providerOptions = applyProviderOptionMenuEvent(providerOptionDescriptors, event);
     if (providerOptions) {
       props.onUpdateModelSelection({
-        ...currentModelSelection,
+        ...activeModelSelection,
         options: providerOptions,
       });
       return;
@@ -692,6 +692,31 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       props.onUpdateInteractionMode(interactionMode);
     }
   }
+
+  const handleSend = useCallback(async () => {
+    if (!selectedModelSelection) return;
+    const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+    if (inFlightThreadIdsRef.current.has(threadKey)) return;
+    inFlightThreadIdsRef.current.add(threadKey);
+    // Sending a prompt starts agent work: arm the lock-screen card now, while
+    // the app is foregrounded and the activity token can be registered.
+    armAgentAwarenessLiveActivityForLocalWork({
+      threadTitle: props.selectedThread.title,
+      projectTitle: props.environmentLabel ?? "T3 Code",
+    });
+    try {
+      await props.onSendMessage();
+    } finally {
+      inFlightThreadIdsRef.current.delete(threadKey);
+    }
+  }, [
+    props.environmentId,
+    props.environmentLabel,
+    props.onSendMessage,
+    props.selectedThread.id,
+    props.selectedThread.title,
+    selectedModelSelection,
+  ]);
 
   return (
     <Animated.View
@@ -858,9 +883,14 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   <ComposerToolbarTrigger
                     accessibilityLabel="Model"
                     iconNode={
-                      <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
+                      <ProviderIcon
+                        provider={currentModelOption?.providerDriver}
+                        iconKey={currentModelOption?.providerIconKey}
+                        label={currentModelOption?.providerLabel}
+                        size={16}
+                      />
                     }
-                    label={currentModelOption?.label ?? currentModelSelection.model}
+                    label={currentModelOption?.label ?? activeModelSelection.model}
                   />
                 </ControlPillMenu>
                 <ControlPillMenu

@@ -1,7 +1,7 @@
 import { type CSSProperties, memo } from "react";
-import { type ProviderDriverKind } from "@t3tools/contracts";
+import { type ProviderDriverKind, type ProviderInstanceIconKey } from "@t3tools/contracts";
 
-import { PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
+import { resolveProviderIcon } from "./providerIconUtils";
 import { cn } from "~/lib/utils";
 
 export function providerInstanceInitials(label: string): string {
@@ -16,27 +16,27 @@ export function providerInstanceInitials(label: string): string {
 
 export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   driverKind: ProviderDriverKind;
+  iconKey?: ProviderInstanceIconKey | undefined;
   displayName: string;
   accentColor?: string | undefined;
-  showBadge?: boolean;
-  badgeContent?: "initials" | "none";
   className?: string;
   iconClassName?: string;
-  badgeClassName?: string;
   statusDotClassName?: string;
   indicatorBackground?: string;
 }) {
-  const Icon = PROVIDER_ICON_BY_PROVIDER[props.driverKind] ?? null;
+  const Icon = resolveProviderIcon(props.iconKey, props.driverKind) ?? null;
   const indicatorBackground = props.indicatorBackground ?? "var(--card)";
   const accentStyle = props.accentColor
-    ? ({ "--provider-accent": props.accentColor } as CSSProperties)
+    ? ({
+        "--provider-accent": props.accentColor,
+        boxShadow: "inset 0 0 0 1px var(--provider-accent)",
+      } as CSSProperties)
     : undefined;
-  const badgeContent = props.badgeContent ?? "initials";
 
   return (
     <span
       className={cn(
-        "relative isolate inline-flex shrink-0 items-center justify-center overflow-visible",
+        "relative isolate inline-flex shrink-0 items-center justify-center overflow-visible rounded-[0.35rem]",
         props.className,
       )}
       style={accentStyle}
@@ -45,7 +45,10 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
       {Icon ? (
         <Icon className={cn("size-5 shrink-0", props.iconClassName)} aria-hidden />
       ) : (
-        <span className={cn("text-[10px] font-semibold leading-none", props.iconClassName)}>
+        <span
+          className={cn("text-[10px] font-semibold leading-none", props.iconClassName)}
+          style={props.accentColor ? { color: props.accentColor } : undefined}
+        >
           {providerInstanceInitials(props.displayName)}
         </span>
       )}
@@ -58,21 +61,6 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
           style={{ boxShadow: `0 0 0 2px ${indicatorBackground}` }}
           aria-hidden
         />
-      ) : null}
-      {props.showBadge ? (
-        <span
-          className={cn(
-            "pointer-events-none absolute right-0 bottom-0 z-10 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border px-0.5 text-[8px] font-semibold leading-none shadow-sm",
-            props.accentColor
-              ? "bg-[var(--provider-accent)] text-white"
-              : "bg-muted text-muted-foreground",
-            props.badgeClassName,
-          )}
-          style={{ borderColor: indicatorBackground }}
-          aria-hidden
-        >
-          {badgeContent === "initials" ? providerInstanceInitials(props.displayName) : null}
-        </span>
       ) : null}
     </span>
   );

@@ -545,6 +545,52 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         ]);
       });
 
+      it("replaces stale model rows when the refreshed provider is authoritative", () => {
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("claude-gpt"),
+          driver: ProviderDriverKind.make("claudeAgent"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "2.1.169",
+          models: [
+            {
+              slug: "claude-opus-4-6",
+              name: "Claude Opus 4.6",
+              isCustom: false,
+              capabilities: createModelCapabilities({ optionDescriptors: [] }),
+            },
+            {
+              slug: "gpt-5.6-sol[1m]",
+              name: "gpt-5.6-sol[1m]",
+              isCustom: true,
+              capabilities: createModelCapabilities({ optionDescriptors: [] }),
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          modelsAreAuthoritative: true,
+          models: [
+            {
+              slug: "gpt-5.6-sol",
+              name: "GPT-5.6 Sol",
+              isCustom: true,
+              capabilities: createModelCapabilities({ optionDescriptors: [] }),
+            },
+          ],
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(mergeProviderSnapshot(previousProvider, refreshedProvider).models, [
+          ...refreshedProvider.models,
+        ]);
+      });
+
       it("fills missing capabilities from the previous provider snapshot", () => {
         const previousProvider = {
           instanceId: ProviderInstanceId.make("cursor"),
@@ -1486,6 +1532,35 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   stderr: "",
                   code: 0,
                 };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect("keeps normal provider health while suppressing built-in models", () =>
+        Effect.gen(function* () {
+          const status = yield* checkClaudeProviderStatus(
+            {
+              ...defaultClaudeSettings,
+              includeBuiltInModels: false,
+              customModels: ["custom-model"],
+            },
+            claudeCapabilities(),
+          );
+
+          assert.strictEqual(status.status, "ready");
+          assert.strictEqual(status.auth.status, "authenticated");
+          assert.deepStrictEqual(
+            status.models.map((model) => model.slug),
+            ["custom-model"],
+          );
+          assert.strictEqual(status.message, undefined);
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "2.1.168\\n", stderr: "", code: 0 };
               throw new Error(`Unexpected args: ${joined}`);
             }),
           ),

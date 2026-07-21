@@ -1,6 +1,7 @@
 import type {
   ModelCapabilities,
   ModelSelection,
+  ProviderInstanceIconKey,
   ServerConfig as T3ServerConfig,
 } from "@t3tools/contracts";
 import {
@@ -15,6 +16,7 @@ export type ModelOption = {
   readonly providerKey: string;
   readonly providerLabel: string;
   readonly providerDriver: string;
+  readonly providerIconKey?: ProviderInstanceIconKey | undefined;
   readonly capabilities: ModelCapabilities | null;
   readonly selection: ModelSelection;
 };
@@ -78,6 +80,7 @@ export function buildModelOptions(
         providerKey: provider.instanceId,
         providerLabel,
         providerDriver: provider.driver,
+        ...(provider.iconKey ? { providerIconKey: provider.iconKey } : {}),
         capabilities: model.capabilities,
         selection: normalizeSelectionOptions(
           {
@@ -99,21 +102,47 @@ export function buildModelOptions(
         selection: normalizeSelectionOptions(fallbackModelSelection, existing.capabilities),
       });
     } else {
-      const providerLabel = fallbackModelSelection.instanceId;
-      options.set(key, {
-        key,
-        label: fallbackModelSelection.model,
-        subtitle: providerLabel,
-        providerKey: fallbackModelSelection.instanceId,
-        providerLabel,
-        providerDriver: fallbackModelSelection.instanceId,
-        capabilities: null,
-        selection: fallbackModelSelection,
-      });
+      const provider = config?.providers.find(
+        (candidate) => candidate.instanceId === fallbackModelSelection.instanceId,
+      );
+      if (!provider?.modelsAreAuthoritative) {
+        const providerLabel = fallbackModelSelection.instanceId;
+        options.set(key, {
+          key,
+          label: fallbackModelSelection.model,
+          subtitle: providerLabel,
+          providerKey: fallbackModelSelection.instanceId,
+          providerLabel,
+          providerDriver: fallbackModelSelection.instanceId,
+          capabilities: null,
+          selection: fallbackModelSelection,
+        });
+      }
     }
   }
 
   return [...options.values()];
+}
+
+export function resolveAdvertisedModelSelection(
+  options: ReadonlyArray<ModelOption>,
+  preferredSelection: ModelSelection | null,
+): ModelSelection | null {
+  if (preferredSelection) {
+    const matchingOption = options.find(
+      (option) =>
+        option.selection.instanceId === preferredSelection.instanceId &&
+        option.selection.model === preferredSelection.model,
+    );
+    if (matchingOption) {
+      return matchingOption.selection;
+    }
+    return (
+      options.find((option) => option.selection.instanceId === preferredSelection.instanceId)
+        ?.selection ?? null
+    );
+  }
+  return options[0]?.selection ?? null;
 }
 
 export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyArray<ProviderGroup> {
