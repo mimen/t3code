@@ -157,7 +157,12 @@ for operation in poll promote rollback; do
   /usr/bin/grep -qx 'trap release_lock EXIT' "$ops_root/scripts/$operation.zsh"
 done
 /usr/bin/grep -qF 'lock_process_start()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'print(int(os.stat(sys.argv[1]).st_mtime))' "$ops_root/scripts/lib.zsh"
 /usr/bin/grep -qF 'remove_stale_lock()' "$ops_root/scripts/lib.zsh"
+if /usr/bin/grep -qF '/usr/bin/stat -f' "$ops_root/scripts/lib.zsh"; then
+  print -u2 -r -- "Lock aging must not depend on BSD stat."
+  exit 1
+fi
 /usr/bin/grep -qF 'quiesce_managed_release "$candidate"' "$ops_root/scripts/promote.zsh"
 
 # The pinned workflow signs only after verification; Mini trusts its pinned public signer, not ref integrity.

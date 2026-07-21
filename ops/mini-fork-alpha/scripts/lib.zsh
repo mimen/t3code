@@ -124,7 +124,12 @@ lock_process_start() {
 
 lock_age_seconds() {
   local modified now
-  modified="$(/usr/bin/stat -f '%m' "$MINI_FORK_ALPHA_LOCK_DIR" 2>/dev/null)" || return 1
+  modified="$("$MINI_FORK_ALPHA_PYTHON" - "$MINI_FORK_ALPHA_LOCK_DIR" <<'PYTHON'
+import os
+import sys
+print(int(os.stat(sys.argv[1]).st_mtime))
+PYTHON
+)" || return 1
   now="$(/bin/date '+%s')"
   [[ "$modified" == <-> && "$now" == <-> ]] || return 1
   print -r -- $(( now - modified ))
