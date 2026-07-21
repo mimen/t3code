@@ -42,6 +42,7 @@ jobs:
     permissions:
       contents: write
     env:
+      GITHUB_TOKEN: ${{ github.token }}
       MINI_ELIGIBILITY_SIGNING_KEY: ${{ secrets.MINI_ELIGIBILITY_SIGNING_KEY }}
     steps:
       - name: Checkout verified main SHA

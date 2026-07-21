@@ -170,6 +170,7 @@ fi
 /usr/bin/grep -qx '  contents: read' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
 /usr/bin/grep -qx '  publish_eligible_ref:' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
 /usr/bin/grep -qx "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'" "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '      GITHUB_TOKEN: ${{ github.token }}' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
 /usr/bin/grep -qx '      MINI_ELIGIBILITY_SIGNING_KEY: ${{ secrets.MINI_ELIGIBILITY_SIGNING_KEY }}' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
 /usr/bin/grep -qx '      contents: write' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
 /usr/bin/grep -qx '    needs: verify' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
