@@ -99,7 +99,7 @@ validate_config() {
   (( MINI_FORK_ALPHA_POLL_INTERVAL_SECONDS >= 60 )) || fail "Poll interval must be at least 60 seconds."
   [[ "$MINI_FORK_ALPHA_LAUNCH_AGENT_LABEL" == "com.mimen.t3code.fork-alpha" ]] || fail "Unexpected LaunchAgent label."
   [[ "$MINI_FORK_ALPHA_ELIGIBLE_REF" == "refs/heads/mini-fork-alpha/eligible" ]] || fail "Unexpected eligibility ref."
-  [[ -n "$MINI_FORK_ALPHA_HOST" && "$MINI_FORK_ALPHA_HOST" != "0.0.0.0" && "$MINI_FORK_ALPHA_HOST" != "::" ]] || fail "Host must be a specific interface."
+  [[ "$MINI_FORK_ALPHA_HOST" == "127.0.0.1" ]] || fail "MINI_FORK_ALPHA_HOST must be 127.0.0.1."
   [[ -x "$MINI_FORK_ALPHA_NODE_BIN" ]] || fail "Configured Node binary is not executable."
   [[ -d "${MINI_FORK_ALPHA_NODE_BIN:h}" ]] || fail "Configured Node binary directory is missing."
   [[ -x "$MINI_FORK_ALPHA_VP_BIN" ]] || fail "Configured Vite+ binary is not executable."
@@ -341,7 +341,7 @@ PYTHON
 }
 
 listener_pids() {
-  "$MINI_FORK_ALPHA_LSOF" -nP -t -iTCP:"$MINI_FORK_ALPHA_PORT" -sTCP:LISTEN 2>/dev/null || true
+  "$MINI_FORK_ALPHA_LSOF" -nP -t -iTCP@"$MINI_FORK_ALPHA_HOST":"$MINI_FORK_ALPHA_PORT" -sTCP:LISTEN 2>/dev/null || true
 }
 
 canonical_path() {

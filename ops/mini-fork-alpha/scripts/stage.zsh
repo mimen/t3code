@@ -42,8 +42,10 @@ trap 'cleanup_staging; exit 130' INT TERM
   [[ "$actual_sha" == "$sha" ]] || exit 1
   configure_build_path
   "$MINI_FORK_ALPHA_VP_BIN" install --frozen-lockfile >/dev/null 2>&1 || exit 1
-  "$MINI_FORK_ALPHA_VP_BIN" run --filter @t3tools/web build >/dev/null 2>&1 || exit 1
-  "$MINI_FORK_ALPHA_VP_BIN" run --filter t3 build >/dev/null 2>&1 || exit 1
+  project_vp="$temporary_release/node_modules/.bin/vp"
+  [[ -x "$project_vp" ]] || exit 1
+  "$project_vp" run --filter @t3tools/web build >/dev/null 2>&1 || exit 1
+  "$project_vp" run --filter t3 build >/dev/null 2>&1 || exit 1
 ) || fail "Staged build failed."
 
 server_version="$("$MINI_FORK_ALPHA_PYTHON" - "$temporary_release/apps/server/package.json" <<'PYTHON'

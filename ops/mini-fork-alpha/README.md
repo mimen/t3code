@@ -26,9 +26,12 @@ server plist and the fixed `MINI_FORK_ALPHA_ELIGIBLE_REF`, and pass that path ex
 script. Keep a repository URL without an embedded token; Git credential handling remains local to the
 Mini user.
 
-The wrapper binds only the configured fixed port, which is required to be `8446`. It rejects wildcard
-hosts, disables Tailscale Serve, and launches with an explicit `T3CODE_HOME` so the environment ID,
-pairing state, and other mutable state survive release swaps.
+The wrapper binds only `127.0.0.1:8446`; configuration rejects every other host. All listener,
+ownership, quiesce, and descriptor checks are scoped to that loopback socket. Tailscale Serve may own the
+Tailnet-IP `:8446` listener separately and route it to loopback; it is intentionally not treated as the
+managed server or a deployment blocker. The wrapper disables its own Tailscale Serve configuration and
+launches with an explicit `T3CODE_HOME` so the environment ID, pairing state, and other mutable state
+survive release swaps.
 
 ## Lifecycle
 
