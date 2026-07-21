@@ -22,12 +22,16 @@ versioned releases:
 
 Copy [`config.example.zsh`](./config.example.zsh) to an absolute path outside the checkout, replace
 all placeholders, including `MINI_FORK_ALPHA_SERVER_PLIST_PATH` pointing to the rendered installed
-server plist, and pass that path explicitly to every script. Keep a repository URL without an embedded
-token; Git credential handling remains local to the Mini user.
+server plist and the fixed `MINI_FORK_ALPHA_ELIGIBLE_REF`, and pass that path explicitly to every
+script. Keep a repository URL without an embedded token; Git credential handling remains local to the
+Mini user.
 
-The wrapper binds only the configured fixed port, which is required to be `8446`. It rejects wildcard
-hosts, disables Tailscale Serve, and launches with an explicit `T3CODE_HOME` so the environment ID,
-pairing state, and other mutable state survive release swaps.
+The wrapper binds only `127.0.0.1:8446`; configuration rejects every other host. All listener,
+ownership, quiesce, and descriptor checks are scoped to that loopback socket. Tailscale Serve may own the
+Tailnet-IP `:8446` listener separately and route it to loopback; it is intentionally not treated as the
+managed server or a deployment blocker. The wrapper disables its own Tailscale Serve configuration and
+launches with an explicit `T3CODE_HOME` so the environment ID, pairing state, and other mutable state
+survive release swaps.
 
 ## Lifecycle
 
@@ -36,15 +40,31 @@ versions:
 
 ```zsh
 ops/mini-fork-alpha/scripts/poll.zsh --config /absolute/path/config.zsh
+ops/mini-fork-alpha/scripts/reconcile.zsh --config /absolute/path/config.zsh
 ops/mini-fork-alpha/scripts/stage.zsh --config /absolute/path/config.zsh --sha <candidate-sha>
 ops/mini-fork-alpha/scripts/promote.zsh --config /absolute/path/config.zsh --sha <staged-sha>
 ops/mini-fork-alpha/scripts/rollback.zsh --config /absolute/path/config.zsh
 ```
 
-`poll.zsh` fetches `origin/main` into the local mirror and records one full 40-character SHA. It does
-not stage or deploy. `stage.zsh` and `promote.zsh` accept only that exact polled SHA while it remains
-the current `origin/main` commit in the mirror. Staging builds it, writes `release.json` with the SHA
-and server version, then makes the release read-only. `promote.zsh` atomically moves `current` and
+The GitHub eligibility workflow publishes the fixed non-secret
+`refs/heads/mini-fork-alpha/eligible` ref only after `ci-verify.zsh` succeeds for the exact `main` SHA.
+It signs a canonical payload with an SSH Ed25519 private signing key supplied only to the publish job as
+the `MINI_ELIGIBILITY_SIGNING_KEY` GitHub Actions secret. The unprotected eligibility ref carries only
+the signed payload and detached signature; its Git integrity is intentionally irrelevant. Mini keeps its
+separate read-only deploy key, reads a pinned allowed-signers public-key file outside the repository and
+all releases, and verifies the signature, namespace, identity, canonical payload, and current `main` SHA
+before recording a candidate. Neither side uses a GitHub API token or PAT. Missing, stale, malformed, or
+invalidly signed eligibility artifacts fail closed.
+
+`reconcile.zsh` is the scheduled entrypoint. It polls, no-ops when that eligible SHA is already healthy,
+or stages and promotes the eligible SHA. `stage.zsh` and `promote.zsh` independently re-check that the
+candidate, `origin/main`, and eligibility ref still match, so a ref change between lifecycle steps fails
+closed. Staging builds the commit, writes `release.json` with the SHA and server version, then makes the
+release read-only. The final release is atomically moved while writable and frozen only afterward; a
+failed freeze is removed when possible and otherwise rejected on the next run as non-immutable. Staging
+builds under an explicit minimal PATH that prepends the directory of the
+configured `MINI_FORK_ALPHA_NODE_BIN`, so the configured Vite+ launcher never depends on launchd's
+ambient PATH. `promote.zsh` atomically moves `current` and
 `previous`, performs one launchd restart, and validates the active server. If descriptor validation
 fails, it first unloads and quiesces the failed candidate while its SHA is still the active pointer,
 then restores the previous symlink pair and restarts the previous release. An initial failed promotion
@@ -77,13 +97,39 @@ command-line text.
 The two templates in [`launchagents`](./launchagents) are user LaunchAgents:
 
 - `com.mimen.t3code-fork-alpha.server.plist.template` keeps the active release running.
-- `com.mimen.t3code-fork-alpha.poll.plist.template` only polls and records a candidate SHA.
+- `com.mimen.t3code-fork-alpha.poll.plist.template` invokes `reconcile.zsh`: eligible SHA polling,
+  idempotent health no-op, staging, and promotion.
 
 Before installing either template, replace `__OPS_ROOT__`, `__CONFIG_PATH__`, `__ROOT__`,
 `__LOG_DIR__`, and (for the poll template) `__POLL_INTERVAL_SECONDS__` with absolute config values.
 Validate the rendered plist with `plutil -lint`, install it in the Mini user's `~/Library/LaunchAgents`,
-and load it in that same user's `gui/<uid>` launchd domain. The poll template never stages, promotes,
-or restarts the service.
+and load it in that same user's `gui/<uid>` launchd domain. The scheduled reconciliation path never
+uses a GitHub API credential or arbitrary Git ref: it proceeds only after the fixed eligibility ref and
+`origin/main` name the same commit.
+
+## Required eligibility signing setup
+
+Before enabling the scheduler, complete these external prerequisites. Do not generate keys or set
+secrets from repository automation.
+
+1. Create one SSH Ed25519 signing keypair dedicated solely to Mini eligibility attestations.
+2. Add its private half as the GitHub Actions secret `MINI_ELIGIBILITY_SIGNING_KEY`. The publish job
+   writes it to a mode-`0600` runner-temp file, signs only the canonical four-line payload with
+   `ssh-keygen -Y sign`, cleans it on exit, and emits no key material. A missing secret is a hard job
+   failure; no new attestation is published.
+3. On Mini, create an allowed-signers file outside the repository and versioned releases, then set
+   `MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH` to its absolute path. It must contain exactly one
+   line in this form, substituting the signing public key:
+
+   ```text
+   mini-fork-alpha-eligibility namespaces="mini-fork-alpha-eligibility" ssh-ed25519 <base64-public-key>
+   ```
+
+   The configuration rejects missing, malformed, multi-signer, wrong-identity, or wrong-namespace files.
+   The Mini public key source must never be `main`, the eligibility ref, or a staged release.
+
+The eligibility ref need not be protected: a direct writer may replace its commit, payload, or signature,
+but cannot make Mini accept a SHA without the externally pinned signing key.
 
 ## CI eligibility gate
 
@@ -91,5 +137,6 @@ or restarts the service.
 runs for pushes to `main`, relevant pull requests, or manual dispatch. It invokes `ci-verify.zsh`,
 which syntax-checks all Zsh scripts, exercises stale-lock and SHA-eligibility regressions in isolated
 temporary Git repositories, parses both plist templates, checks the non-secret config shape, and
-confirms the sole server listener is port `8446`. It has read-only repository permissions and contains
-no Mini, SSH, or Tailnet operation.
+confirms the sole server listener is port `8446`. After a successful `main` verification, its separate
+publish job signs and publishes the canonical eligibility artifact with the configured signing secret.
+It contains no Mini, Tailnet, GitHub API-token, or third-party action operation.

@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mini-fork-alpha-eligibility-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: Verify deployment inputs
@@ -28,3 +32,72 @@ jobs:
 
       - name: Verify Mini deployment eligibility
         run: zsh ops/mini-fork-alpha/scripts/ci-verify.zsh
+
+  publish_eligible_ref:
+    name: Publish signed Mini eligibility
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      MINI_ELIGIBILITY_SIGNING_KEY: ${{ secrets.MINI_ELIGIBILITY_SIGNING_KEY }}
+    steps:
+      - name: Checkout verified main SHA
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Sign and publish verified eligibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MINI_ELIGIBILITY_SIGNING_KEY:-}" ]]; then
+            echo "::error::MINI_ELIGIBILITY_SIGNING_KEY is required to publish signed eligibility." >&2
+            exit 1
+          fi
+
+          signing_key="$RUNNER_TEMP/mini-eligibility-signing-key"
+          payload_path="$RUNNER_TEMP/eligibility.payload"
+          signature_path="$RUNNER_TEMP/eligibility.payload.sig"
+          publish_dir="$RUNNER_TEMP/mini-eligibility-ref"
+          umask 077
+          printf '%s\n' "$MINI_ELIGIBILITY_SIGNING_KEY" > "$signing_key"
+          trap 'rm -f "$signing_key" "$payload_path" "$signature_path"; rm -rf "$publish_dir"' EXIT
+          signer_public_key="$(ssh-keygen -y -f "$signing_key")" || {
+            echo "::error::MINI_ELIGIBILITY_SIGNING_KEY is not an SSH private key." >&2
+            exit 1
+          }
+          [[ "$signer_public_key" == ssh-ed25519\ * ]] || {
+            echo "::error::MINI_ELIGIBILITY_SIGNING_KEY must be an SSH Ed25519 key." >&2
+            exit 1
+          }
+
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          current_main_sha="$(git rev-parse refs/remotes/origin/main^{commit})"
+          if [[ "$current_main_sha" != "$GITHUB_SHA" ]]; then
+            echo "main advanced after this eligibility run; not publishing a stale attestation."
+            exit 0
+          fi
+
+          cat > "$payload_path" <<PAYLOAD
+          schema=1
+          namespace=mini-fork-alpha-eligibility
+          identity=mini-fork-alpha-eligibility
+          sha=$GITHUB_SHA
+          PAYLOAD
+          ssh-keygen -Y sign -f "$signing_key" -n mini-fork-alpha-eligibility "$payload_path" >/dev/null
+
+          git init -q "$publish_dir"
+          git -C "$publish_dir" checkout --orphan eligible -q
+          git -C "$publish_dir" config user.name "github-actions[bot]"
+          git -C "$publish_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$payload_path" "$publish_dir/eligibility.payload"
+          cp "$signature_path" "$publish_dir/eligibility.payload.sig"
+          git -C "$publish_dir" add eligibility.payload eligibility.payload.sig
+          git -C "$publish_dir" commit -qm "chore(ops): attest $GITHUB_SHA"
+          git -C "$publish_dir" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$publish_dir" push --force origin HEAD:refs/heads/mini-fork-alpha/eligible

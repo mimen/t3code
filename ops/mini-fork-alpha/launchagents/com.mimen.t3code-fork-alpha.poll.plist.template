@@ -6,7 +6,7 @@
   <string>com.mimen.t3code.fork-alpha.poll</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__OPS_ROOT__/scripts/poll.zsh</string>
+    <string>__OPS_ROOT__/scripts/reconcile.zsh</string>
     <string>--config</string>
     <string>__CONFIG_PATH__</string>
   </array>

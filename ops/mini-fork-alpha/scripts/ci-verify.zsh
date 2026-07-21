@@ -8,6 +8,7 @@ repo_root="${ops_root:h:h}"
 required_scripts=(
   lib.zsh
   poll.zsh
+  reconcile.zsh
   stage.zsh
   validate.zsh
   promote.zsh
@@ -45,6 +46,9 @@ if /usr/bin/grep -Eq '(^|_)(TOKEN|SECRET|PASSWORD|PRIVATE_KEY)=' "$ops_root/conf
 fi
 /usr/bin/grep -qx 'MINI_FORK_ALPHA_PORT="8446"' "$ops_root/config.example.zsh"
 /usr/bin/grep -qx 'MINI_FORK_ALPHA_HOST="127.0.0.1"' "$ops_root/config.example.zsh"
+/usr/bin/grep -qx 'MINI_FORK_ALPHA_ELIGIBLE_REF="refs/heads/mini-fork-alpha/eligible"' "$ops_root/config.example.zsh"
+/usr/bin/grep -qx 'MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH="/Users/REPLACE_ME/.config/t3code-fork-alpha/eligibility-allowed-signers"' "$ops_root/config.example.zsh"
+/usr/bin/grep -qx 'MINI_FORK_ALPHA_SSH_KEYGEN_BIN="/usr/bin/ssh-keygen"' "$ops_root/config.example.zsh"
 /usr/bin/grep -qx 'MINI_FORK_ALPHA_SERVER_PLIST_PATH="/Users/REPLACE_ME/Library/LaunchAgents/com.mimen.t3code.fork-alpha.plist"' "$ops_root/config.example.zsh"
 
 /usr/bin/python3 - "$ops_root" <<'PYTHON'
@@ -72,7 +76,7 @@ templates = {
     ],
     "com.mimen.t3code-fork-alpha.poll.plist.template": [
         "com.mimen.t3code.fork-alpha.poll",
-        "__OPS_ROOT__/scripts/poll.zsh",
+        "__OPS_ROOT__/scripts/reconcile.zsh",
         "__CONFIG_PATH__",
         "__POLL_INTERVAL_SECONDS__",
         "__LOG_DIR__/launchd-poll.stdout.log",
@@ -98,7 +102,24 @@ PYTHON
 /usr/bin/grep -qx '"$MINI_FORK_ALPHA_GIT" clone --no-checkout --no-local "$mirror" "$temporary_release" >/dev/null 2>&1 || fail "Could not create staging checkout."' "$ops_root/scripts/stage.zsh"
 /usr/bin/grep -qF 'os.replace(sys.argv[1], sys.argv[2])' "$ops_root/scripts/lib.zsh"
 /usr/bin/grep -qx 'verify_polled_candidate_sha "$sha"' "$ops_root/scripts/stage.zsh"
+/usr/bin/grep -qx '  configure_build_path' "$ops_root/scripts/stage.zsh"
+/usr/bin/grep -qF 'project_vp="$temporary_release/node_modules/.bin/vp"' "$ops_root/scripts/stage.zsh"
+/usr/bin/grep -qx '  "$project_vp" run --filter @t3tools/web build >/dev/null 2>&1 || exit 1' "$ops_root/scripts/stage.zsh"
+/usr/bin/grep -qx '  "$project_vp" run --filter t3 build >/dev/null 2>&1 || exit 1' "$ops_root/scripts/stage.zsh"
+/usr/bin/grep -qF 'configure_build_path()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'export PATH="$node_dir:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qFx '  [[ "$MINI_FORK_ALPHA_HOST" == "127.0.0.1" ]] || fail "MINI_FORK_ALPHA_HOST must be 127.0.0.1."' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF -- '-iTCP@"$MINI_FORK_ALPHA_HOST":"$MINI_FORK_ALPHA_PORT"' "$ops_root/scripts/lib.zsh"
 /usr/bin/grep -qx 'verify_polled_candidate_sha "$candidate_sha"' "$ops_root/scripts/promote.zsh"
+/usr/bin/grep -qF 'fetch_eligibility_refs()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'fetch_and_record_eligible_candidate()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'fetch_eligibility_refs' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'verify_eligibility_attestation()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'canonical_eligibility_payload' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'ssh-keygen binary is not executable.' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qx 'sha="$(fetch_and_record_eligible_candidate)"' "$ops_root/scripts/poll.zsh"
+/usr/bin/grep -qx '"$script_dir/stage.zsh" --config "$config_path" --sha "$candidate_sha" >/dev/null' "$ops_root/scripts/reconcile.zsh"
+/usr/bin/grep -qx '"$script_dir/promote.zsh" --config "$config_path" --sha "$candidate_sha"' "$ops_root/scripts/reconcile.zsh"
 /usr/bin/grep -qF 'launch_agent_pid()' "$ops_root/scripts/lib.zsh"
 /usr/bin/grep -qF '[[ "$pid" == "$service_pid" ]] || return 1' "$ops_root/scripts/lib.zsh"
 /usr/bin/grep -qF 'process_has_open_path "$pid" cwd "$canonical_release"' "$ops_root/scripts/lib.zsh"
@@ -125,6 +146,22 @@ if restore_body.index('quiesce_managed_release "$candidate"') > restore_body.ind
 validate = (ops_root / "scripts" / "validate.zsh").read_text(encoding="utf-8")
 if validate.index('port_is_owned_by_release "$release"') < validate.index("while (( attempt <= 30 )); do"):
     raise SystemExit("Validation must retry port ownership during its startup window")
+
+stage = (ops_root / "scripts" / "stage.zsh").read_text(encoding="utf-8")
+if stage.index("trap release_lock EXIT") > stage.index('verify_polled_candidate_sha "$sha"'):
+    raise SystemExit("Stage must retain its lock before candidate verification")
+if stage.index("trap release_lock EXIT") > stage.index('if [[ -e "$release" ]]; then'):
+    raise SystemExit("Stage must retain its lock before immutable-release reuse")
+if stage.index('/bin/mv "$temporary_release" "$release"') > stage.index('/bin/chmod -R a-w "$release"'):
+    raise SystemExit("Stage must move a writable release before freezing it")
+if 'release_is_immutable()' not in stage or '/bin/rm -rf "$release" 2>/dev/null || true' not in stage:
+    raise SystemExit("Stage must reject or clean a release when immutable promotion fails")
+
+lib = (ops_root / "scripts" / "lib.zsh").read_text(encoding="utf-8")
+verify_start = lib.index("verify_polled_candidate_sha()")
+verify_end = lib.index("\n}\n\nrelease_path()", verify_start)
+if "fetch_eligibility_refs" not in lib[verify_start:verify_end]:
+    raise SystemExit("Stage and promotion verification must refresh remote eligibility refs")
 PYTHON
 
 # Mutating operations retain their lock until process exit; stale owner metadata is recovered safely.
@@ -132,13 +169,37 @@ for operation in poll promote rollback; do
   /usr/bin/grep -qx 'trap release_lock EXIT' "$ops_root/scripts/$operation.zsh"
 done
 /usr/bin/grep -qF 'lock_process_start()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'print(int(os.stat(sys.argv[1]).st_mtime))' "$ops_root/scripts/lib.zsh"
 /usr/bin/grep -qF 'remove_stale_lock()' "$ops_root/scripts/lib.zsh"
+if /usr/bin/grep -qF '/usr/bin/stat -f' "$ops_root/scripts/lib.zsh"; then
+  print -u2 -r -- "Lock aging must not depend on BSD stat."
+  exit 1
+fi
 /usr/bin/grep -qF 'quiesce_managed_release "$candidate"' "$ops_root/scripts/promote.zsh"
 
-# The workflow is SHA-pinned and the process wrapper hard-codes the sole authorized listener port.
+# The pinned workflow signs only after verification; Mini trusts its pinned public signer, not ref integrity.
+/usr/bin/grep -qx 'permissions:' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '  contents: read' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '  publish_eligible_ref:' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'" "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '      GITHUB_TOKEN: ${{ github.token }}' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '      MINI_ELIGIBILITY_SIGNING_KEY: ${{ secrets.MINI_ELIGIBILITY_SIGNING_KEY }}' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '      contents: write' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '    needs: verify' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qFx '          if [[ -z "${MINI_ELIGIBILITY_SIGNING_KEY:-}" ]]; then' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qFx '          [[ "$signer_public_key" == ssh-ed25519\ * ]] || {' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qFx '          if [[ "$current_main_sha" != "$GITHUB_SHA" ]]; then' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '          ssh-keygen -Y sign -f "$signing_key" -n mini-fork-alpha-eligibility "$payload_path" >/dev/null' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx '          git -C "$publish_dir" push --force origin HEAD:refs/heads/mini-fork-alpha/eligible' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
 /usr/bin/grep -qx '        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
 /usr/bin/grep -qx 'export T3CODE_PORT="8446"' "$ops_root/scripts/run-server.zsh"
 /usr/bin/grep -qx 'export T3CODE_TAILSCALE_SERVE="false"' "$ops_root/scripts/run-server.zsh"
 /usr/bin/grep -qx '  --port 8446 \\' "$ops_root/scripts/run-server.zsh"
+/usr/bin/grep -qF '## Required eligibility signing setup' "$ops_root/README.md"
+/usr/bin/grep -qF 'MINI_ELIGIBILITY_SIGNING_KEY' "$ops_root/README.md"
+/usr/bin/grep -qF 'MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH' "$ops_root/README.md"
+/usr/bin/grep -qF 'The eligibility ref need not be protected' "$ops_root/README.md"
+/usr/bin/grep -qF '127.0.0.1:8446' "$ops_root/README.md"
+/usr/bin/grep -qF 'Tailnet-IP `:8446` listener separately' "$ops_root/README.md"
 
 print -r -- "Mini Fork Alpha deployment eligibility checks passed."
