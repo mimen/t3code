@@ -1,0 +1,144 @@
+#!/bin/zsh
+# Static eligibility check. It intentionally performs no network, SSH, Tailscale, or Mini operation.
+
+set -euo pipefail
+
+ops_root="${0:A:h:h}"
+repo_root="${ops_root:h:h}"
+required_scripts=(
+  lib.zsh
+  poll.zsh
+  stage.zsh
+  validate.zsh
+  promote.zsh
+  rollback.zsh
+  run-server.zsh
+  ci-verify.zsh
+)
+
+[[ "$(<"$ops_root/VERSION")" == <-> ]] || {
+  print -u2 -r -- "Mini ops VERSION must be a positive integer."
+  exit 1
+}
+
+for script in $required_scripts; do
+  script_path="$ops_root/scripts/$script"
+  [[ -f "$script_path" && -x "$script_path" ]] || {
+    print -u2 -r -- "Missing executable script: $script_path"
+    exit 1
+  }
+  /usr/bin/env zsh -n "$script_path"
+done
+/usr/bin/env zsh -n "$ops_root/config.example.zsh"
+test_path="$ops_root/tests/sha-eligibility.test.zsh"
+[[ -f "$test_path" && -x "$test_path" ]] || {
+  print -u2 -r -- "Missing executable SHA eligibility test."
+  exit 1
+}
+/usr/bin/env zsh -n "$test_path"
+/usr/bin/env zsh "$test_path"
+
+[[ -f "$ops_root/config.example.zsh" ]] || exit 1
+if /usr/bin/grep -Eq '(^|_)(TOKEN|SECRET|PASSWORD|PRIVATE_KEY)=' "$ops_root/config.example.zsh"; then
+  print -u2 -r -- "The checked-in config example must not contain secret settings."
+  exit 1
+fi
+/usr/bin/grep -qx 'MINI_FORK_ALPHA_PORT="8446"' "$ops_root/config.example.zsh"
+/usr/bin/grep -qx 'MINI_FORK_ALPHA_HOST="127.0.0.1"' "$ops_root/config.example.zsh"
+/usr/bin/grep -qx 'MINI_FORK_ALPHA_SERVER_PLIST_PATH="/Users/REPLACE_ME/Library/LaunchAgents/com.mimen.t3code.fork-alpha.plist"' "$ops_root/config.example.zsh"
+
+/usr/bin/python3 - "$ops_root" <<'PYTHON'
+from pathlib import Path
+from xml.etree import ElementTree
+import plistlib
+import sys
+
+ops_root = Path(sys.argv[1])
+replacements = {
+    "__OPS_ROOT__": "/Users/mini/Library/Application Support/t3code-fork-alpha/ops/mini-fork-alpha",
+    "__CONFIG_PATH__": "/Users/mini/.config/t3code-fork-alpha/config.zsh",
+    "__ROOT__": "/Users/mini/Library/Application Support/t3code-fork-alpha",
+    "__LOG_DIR__": "/Users/mini/Library/Logs/t3code-fork-alpha",
+    "__POLL_INTERVAL_SECONDS__": "300",
+}
+templates = {
+    "com.mimen.t3code-fork-alpha.server.plist.template": [
+        "com.mimen.t3code.fork-alpha",
+        "__OPS_ROOT__/scripts/run-server.zsh",
+        "__CONFIG_PATH__",
+        "__ROOT__",
+        "__LOG_DIR__/launchd-server.stdout.log",
+        "__LOG_DIR__/launchd-server.stderr.log",
+    ],
+    "com.mimen.t3code-fork-alpha.poll.plist.template": [
+        "com.mimen.t3code.fork-alpha.poll",
+        "__OPS_ROOT__/scripts/poll.zsh",
+        "__CONFIG_PATH__",
+        "__POLL_INTERVAL_SECONDS__",
+        "__LOG_DIR__/launchd-poll.stdout.log",
+        "__LOG_DIR__/launchd-poll.stderr.log",
+    ],
+}
+for filename, expected in templates.items():
+    template_path = ops_root / "launchagents" / filename
+    root = ElementTree.parse(template_path).getroot()
+    values = [element.text for element in root.iter() if element.text]
+    missing = [value for value in expected if value not in values]
+    if missing:
+        raise SystemExit(f"{filename} is missing {missing!r}")
+    rendered = template_path.read_text(encoding="utf-8")
+    for placeholder, value in replacements.items():
+        rendered = rendered.replace(placeholder, value)
+    if "__" in rendered:
+        raise SystemExit(f"{filename} contains an unreplaced template placeholder")
+    plistlib.loads(rendered.encode("utf-8"))
+PYTHON
+
+# The staged checkout is self-contained; it must not depend on the mutable mirror's object store.
+/usr/bin/grep -qx '"$MINI_FORK_ALPHA_GIT" clone --no-checkout --no-local "$mirror" "$temporary_release" >/dev/null 2>&1 || fail "Could not create staging checkout."' "$ops_root/scripts/stage.zsh"
+/usr/bin/grep -qF 'os.replace(sys.argv[1], sys.argv[2])' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qx 'verify_polled_candidate_sha "$sha"' "$ops_root/scripts/stage.zsh"
+/usr/bin/grep -qx 'verify_polled_candidate_sha "$candidate_sha"' "$ops_root/scripts/promote.zsh"
+/usr/bin/grep -qF 'launch_agent_pid()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF '[[ "$pid" == "$service_pid" ]] || return 1' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'process_has_open_path "$pid" cwd "$canonical_release"' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'process_has_open_path "$pid" txt "$canonical_node"' "$ops_root/scripts/lib.zsh"
+if /usr/bin/sed -n '/^assert_port_is_owned_by_releases()/,/^}/p' "$ops_root/scripts/lib.zsh" | /usr/bin/grep -q '/bin/ps'; then
+  print -u2 -r -- "Port ownership must not trust process command-line arguments."
+  exit 1
+fi
+/usr/bin/grep -qF 'quiesce_managed_release()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qx '  quiesce_managed_release "$candidate"' "$ops_root/scripts/promote.zsh"
+
+/usr/bin/python3 - "$ops_root" <<'PYTHON'
+from pathlib import Path
+import sys
+
+ops_root = Path(sys.argv[1])
+promote = (ops_root / "scripts" / "promote.zsh").read_text(encoding="utf-8")
+restore_start = promote.index("restore_after_failed_promotion()")
+restore_end = promote.index("\n}\n\nif [[ -n", restore_start)
+restore_body = promote[restore_start:restore_end]
+if restore_body.index('quiesce_managed_release "$candidate"') > restore_body.index('replace_symlink "$current_link" "$old_current"'):
+    raise SystemExit("Failed candidate must quiesce before restoring pointers")
+
+validate = (ops_root / "scripts" / "validate.zsh").read_text(encoding="utf-8")
+if validate.index('port_is_owned_by_release "$release"') < validate.index("while (( attempt <= 30 )); do"):
+    raise SystemExit("Validation must retry port ownership during its startup window")
+PYTHON
+
+# Mutating operations retain their lock until process exit; stale owner metadata is recovered safely.
+for operation in poll promote rollback; do
+  /usr/bin/grep -qx 'trap release_lock EXIT' "$ops_root/scripts/$operation.zsh"
+done
+/usr/bin/grep -qF 'lock_process_start()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'remove_stale_lock()' "$ops_root/scripts/lib.zsh"
+/usr/bin/grep -qF 'quiesce_managed_release "$candidate"' "$ops_root/scripts/promote.zsh"
+
+# The workflow is SHA-pinned and the process wrapper hard-codes the sole authorized listener port.
+/usr/bin/grep -qx '        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6' "$repo_root/.github/workflows/mini-fork-alpha-eligibility.yml"
+/usr/bin/grep -qx 'export T3CODE_PORT="8446"' "$ops_root/scripts/run-server.zsh"
+/usr/bin/grep -qx 'export T3CODE_TAILSCALE_SERVE="false"' "$ops_root/scripts/run-server.zsh"
+/usr/bin/grep -qx '  --port 8446 \\' "$ops_root/scripts/run-server.zsh"
+
+print -r -- "Mini Fork Alpha deployment eligibility checks passed."

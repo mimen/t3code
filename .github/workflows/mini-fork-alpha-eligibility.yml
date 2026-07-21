@@ -1,0 +1,30 @@
+name: Mini Fork Alpha Eligibility
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "ops/mini-fork-alpha/**"
+      - ".github/workflows/mini-fork-alpha-eligibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify deployment inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      # This is intentionally static: no secrets, SSH, Mini hostname, or Tailnet access.
+      - name: Install Zsh for script syntax validation
+        run: sudo apt-get update && sudo apt-get install --yes zsh
+
+      - name: Verify Mini deployment eligibility
+        run: zsh ops/mini-fork-alpha/scripts/ci-verify.zsh
