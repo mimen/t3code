@@ -1,6 +1,7 @@
 import {
   type ClaudeSettings,
   ProviderDriverKind,
+  ProviderInstanceId,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -24,6 +25,7 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { verifyClaudeBinaryIntegrity } from "../Drivers/ClaudeBinaryIntegrity.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { makeClaudeModelCatalog, type ClaudeModelCatalog } from "./ClaudeModelCatalog.ts";
 
@@ -236,11 +238,13 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
  */
 const probeClaudeCapabilities = (
   claudeSettings: ClaudeSettings,
+  instanceId: ProviderInstanceId,
   environment?: NodeJS.ProcessEnv,
   cwd?: string,
 ) => {
   const abort = new AbortController();
   return Effect.gen(function* () {
+    yield* verifyClaudeBinaryIntegrity({ instanceId, settings: claudeSettings });
     const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
     return yield* Effect.tryPromise(async () => {
       const q = claudeQuery({
@@ -293,9 +297,11 @@ const probeClaudeCapabilities = (
 
 const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   claudeSettings: ClaudeSettings,
+  instanceId: ProviderInstanceId,
   args: ReadonlyArray<string>,
   environment?: NodeJS.ProcessEnv,
 ) {
+  yield* verifyClaudeBinaryIntegrity({ instanceId, settings: claudeSettings });
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
   const spawnCommand = yield* resolveSpawnCommand(claudeSettings.binaryPath, args, {
     env: claudeEnvironment,
@@ -341,6 +347,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   const versionProbe = yield* runClaudeCommand(
     claudeSettings,
+    ProviderInstanceId.make("claude"),
     ["--version"],
     resolvedEnvironment,
   ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);

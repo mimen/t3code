@@ -17,3 +17,10 @@ MINI_FORK_ALPHA_SERVER_PLIST_PATH="/Users/REPLACE_ME/Library/LaunchAgents/com.mi
 MINI_FORK_ALPHA_POLL_INTERVAL_SECONDS="300"
 MINI_FORK_ALPHA_NODE_BIN="/opt/homebrew/bin/node"
 MINI_FORK_ALPHA_VP_BIN="/opt/homebrew/bin/vp"
+# Used only by scripts/configure-claude-gpt.zsh. Point to the actual Claude Code CLI,
+# never a gateway wrapper. The home path becomes this instance's CLAUDE_CONFIG_DIR and
+# must not be the regular Claude CLI configuration directory.
+MINI_FORK_ALPHA_CLAUDE_CLI_PATH="/Users/REPLACE_ME/.local/bin/claude"
+# Pin the SHA-256 of the canonical executable at the path above; this is non-secret.
+MINI_FORK_ALPHA_CLAUDE_CLI_SHA256="REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS"
+MINI_FORK_ALPHA_CLAUDE_GPT_HOME_PATH="/Users/REPLACE_ME/.config/t3code-fork-alpha/claude-gpt"

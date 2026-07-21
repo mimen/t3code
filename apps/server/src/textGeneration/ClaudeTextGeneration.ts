@@ -13,7 +13,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { type ClaudeSettings, type ModelSelection } from "@t3tools/contracts";
+import { type ClaudeSettings, type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
@@ -40,6 +40,7 @@ import {
   makeClaudeModelCatalog,
   type ClaudeModelCatalog,
 } from "../provider/Layers/ClaudeModelCatalog.ts";
+import { verifyClaudeBinaryIntegrity } from "../provider/Drivers/ClaudeBinaryIntegrity.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
@@ -57,6 +58,7 @@ const decodeClaudeOutputEnvelope = Schema.decodeEffect(Schema.fromJsonString(Cla
 
 export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(function* (
   claudeSettings: ClaudeSettings,
+  instanceId: ProviderInstanceId = ProviderInstanceId.make("claude"),
   environment?: NodeJS.ProcessEnv,
   modelCatalog: ClaudeModelCatalog = makeClaudeModelCatalog(claudeSettings),
 ) {
@@ -155,6 +157,16 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         : undefined;
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
+      yield* verifyClaudeBinaryIntegrity({ instanceId, settings: claudeSettings }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TextGenerationError({
+              operation,
+              detail: "Configured Claude CLI integrity verification failed.",
+              cause,
+            }),
+        ),
+      );
       const spawnCommand = yield* resolveSpawnCommand(
         claudeSettings.binaryPath || "claude",
         [

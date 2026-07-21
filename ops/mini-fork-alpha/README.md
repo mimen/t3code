@@ -80,6 +80,59 @@ Unexpected lock contents still fail closed for manual inspection. Operational lo
 version, and operation state. Command output is suppressed and log text is redacted before it reaches
 `ops.log`.
 
+## Claude-GPT provider
+
+`ops/mini-fork-alpha/scripts/configure-claude-gpt.zsh` is the versioned, idempotent
+operation for the `claude-gpt` provider instance. It invokes the current release's
+server CLI against the same explicit `T3CODE_HOME`/`--base-dir` used by `run-server.zsh`;
+it never edits `settings.json` or `secrets/*.bin` directly. The server command reads the
+complete provider-instance map with `ServerSettingsService`, replaces only `claude-gpt`,
+and persists through its canonical secret store and atomic settings writer. Existing
+provider instances and their redacted secret references are retained. Before this read-modify-write
+operation, the wrapper acquires the Mini ops lock and quiesces the launchd-owned server; it restarts
+the server afterward, including on command failure. This prevents a live server settings update from
+being silently overwritten by a stale provider-instance map.
+
+Add these non-secret absolute paths to the external Mini config before use:
+
+```zsh
+MINI_FORK_ALPHA_CLAUDE_CLI_PATH="/absolute/path/to/claude"
+MINI_FORK_ALPHA_CLAUDE_CLI_SHA256="<canonical Claude CLI SHA-256>"
+MINI_FORK_ALPHA_CLAUDE_GPT_HOME_PATH="/absolute/path/to/dedicated/claude-gpt-config"
+```
+
+`MINI_FORK_ALPHA_CLAUDE_CLI_PATH` must identify the actual Claude Code CLI, not the
+`claude-gpt` gateway wrapper. Before changing the config, resolve and inspect the intended
+CLI, then record its canonical executable hash with
+`/usr/bin/shasum -a 256 /absolute/path/to/claude`. The operation resolves symlinks and
+verifies that hash before storing the canonical path, so a wrapper reached through a symlink
+or rename cannot silently replace provider credentials or permission behavior. The server
+checks the same stored pin immediately before every `claude-gpt` session launch and fails
+closed before giving the process its provider environment on a mismatch. Update the pin
+deliberately when upgrading the Claude CLI. The CLI path and dedicated home path are
+deliberately separate from the regular Claude instance. The latter is passed as this instance's
+`CLAUDE_CONFIG_DIR`; the server does not override `HOME`, so macOS keychain lookup remains
+available to the spawned CLI.
+
+Pass the gateway key as a one-line JSON envelope on stdin. The wrapper forwards only file
+descriptor 0 to the server command; it has no key argument, key environment variable, or
+key file input. The command allows the reader up to 30 seconds before failing, so a normal
+secret-manager unlock or fetch need not race process startup. For example, adapt the secret
+reader to emit the shown envelope through a
+pipe (do not use `echo`, a shell variable, or a file for the key):
+
+```zsh
+secret-reader-that-emits-json | \
+  ops/mini-fork-alpha/scripts/configure-claude-gpt.zsh --config /absolute/path/config.zsh
+```
+
+The required envelope shape is `{"gatewayKey":"..."}`. The command's only success output
+is a non-secret confirmation. It configures OpenAI branding and exactly these gateway
+model profiles: `gpt-5.6-sol[1m]` (high), `gpt-5.6-terra[1m]` (medium; extra-high available
+for hard runs), `gpt-5.6-luna[1m]` (low), and `gpt-5.5[1m]` (medium). The instance is pinned
+to the loopback gateway URL `http://127.0.0.1:8317`; its gateway token is marked sensitive
+and is stored only by the server secret store.
+
 ## Validation
 
 There is intentionally no bespoke readiness API in this phase. After launchd restarts the server,

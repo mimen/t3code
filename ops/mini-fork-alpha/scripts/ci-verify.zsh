@@ -14,6 +14,7 @@ required_scripts=(
   promote.zsh
   rollback.zsh
   run-server.zsh
+  configure-claude-gpt.zsh
   ci-verify.zsh
 )
 
@@ -38,6 +39,13 @@ test_path="$ops_root/tests/sha-eligibility.test.zsh"
 }
 /usr/bin/env zsh -n "$test_path"
 /usr/bin/env zsh "$test_path"
+claude_gpt_test_path="$ops_root/tests/claude-gpt-provider.test.zsh"
+[[ -f "$claude_gpt_test_path" && -x "$claude_gpt_test_path" ]] || {
+  print -u2 -r -- "Missing executable claude-gpt provider test."
+  exit 1
+}
+/usr/bin/env zsh -n "$claude_gpt_test_path"
+/usr/bin/env zsh "$claude_gpt_test_path"
 
 [[ -f "$ops_root/config.example.zsh" ]] || exit 1
 if /usr/bin/grep -Eq '(^|_)(TOKEN|SECRET|PASSWORD|PRIVATE_KEY)=' "$ops_root/config.example.zsh"; then
