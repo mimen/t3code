@@ -19,7 +19,10 @@ config_path="$test_root/config.zsh"
 allowed_signers_path="$test_root/eligibility-allowed-signers"
 fake_ssh_keygen="$test_root/fake-ssh-keygen"
 attestation_dir="$test_root/attestation"
+fake_node_dir="$test_root/fake-node"
 
+/bin/mkdir -p "$fake_node_dir"
+/bin/ln -s /usr/bin/true "$fake_node_dir/node"
 print -r -- 'mini-fork-alpha-eligibility namespaces="mini-fork-alpha-eligibility" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' > "$allowed_signers_path"
 cat > "$fake_ssh_keygen" <<'FAKE_SSH_KEYGEN'
 #!/bin/zsh
@@ -84,11 +87,16 @@ MINI_FORK_ALPHA_ELIGIBILITY_ALLOWED_SIGNERS_PATH="$allowed_signers_path"
 MINI_FORK_ALPHA_SSH_KEYGEN_BIN="$fake_ssh_keygen"
 MINI_FORK_ALPHA_SERVER_PLIST_PATH="$test_root/com.mimen.t3code.fork-alpha.plist"
 MINI_FORK_ALPHA_POLL_INTERVAL_SECONDS="300"
-MINI_FORK_ALPHA_NODE_BIN="/usr/bin/true"
+MINI_FORK_ALPHA_NODE_BIN="$fake_node_dir/node"
 MINI_FORK_ALPHA_VP_BIN="/usr/bin/true"
 CONFIG
 
 parse_config_argument --config "$config_path"
+configure_build_path
+[[ "$(command -v node)" == "$MINI_FORK_ALPHA_NODE_BIN" ]] || {
+  print -u2 -r -- "Build PATH did not prioritize configured Node."
+  exit 1
+}
 prepare_local_directories
 
 acquire_lock

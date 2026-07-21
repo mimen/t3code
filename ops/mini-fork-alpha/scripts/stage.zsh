@@ -40,6 +40,7 @@ trap 'cleanup_staging; exit 130' INT TERM
   "$MINI_FORK_ALPHA_GIT" checkout --detach "$sha" >/dev/null 2>&1 || exit 1
   actual_sha="$("$MINI_FORK_ALPHA_GIT" rev-parse HEAD)"
   [[ "$actual_sha" == "$sha" ]] || exit 1
+  configure_build_path
   "$MINI_FORK_ALPHA_VP_BIN" install --frozen-lockfile >/dev/null 2>&1 || exit 1
   "$MINI_FORK_ALPHA_VP_BIN" run --filter @t3tools/web build >/dev/null 2>&1 || exit 1
   "$MINI_FORK_ALPHA_VP_BIN" run --filter t3 build >/dev/null 2>&1 || exit 1

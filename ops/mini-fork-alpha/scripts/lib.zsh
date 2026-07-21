@@ -101,9 +101,17 @@ validate_config() {
   [[ "$MINI_FORK_ALPHA_ELIGIBLE_REF" == "refs/heads/mini-fork-alpha/eligible" ]] || fail "Unexpected eligibility ref."
   [[ -n "$MINI_FORK_ALPHA_HOST" && "$MINI_FORK_ALPHA_HOST" != "0.0.0.0" && "$MINI_FORK_ALPHA_HOST" != "::" ]] || fail "Host must be a specific interface."
   [[ -x "$MINI_FORK_ALPHA_NODE_BIN" ]] || fail "Configured Node binary is not executable."
+  [[ -d "${MINI_FORK_ALPHA_NODE_BIN:h}" ]] || fail "Configured Node binary directory is missing."
   [[ -x "$MINI_FORK_ALPHA_VP_BIN" ]] || fail "Configured Vite+ binary is not executable."
   [[ -x "$MINI_FORK_ALPHA_SSH_KEYGEN_BIN" ]] || fail "Configured ssh-keygen binary is not executable."
   validate_eligibility_allowed_signers
+}
+
+configure_build_path() {
+  local node_dir="${MINI_FORK_ALPHA_NODE_BIN:h}"
+  [[ -d "$node_dir" ]] || fail "Configured Node binary directory is missing."
+  export PATH="$node_dir:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+  [[ "$(command -v node)" == "$MINI_FORK_ALPHA_NODE_BIN" ]] || fail "Build PATH does not resolve the configured Node binary."
 }
 
 prepare_local_directories() {
