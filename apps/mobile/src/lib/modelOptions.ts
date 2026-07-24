@@ -17,6 +17,7 @@ export type ModelOption = {
   readonly providerLabel: string;
   readonly providerDriver: string;
   readonly providerIconKey?: ProviderInstanceIconKey | undefined;
+  readonly isDefault: boolean;
   readonly capabilities: ModelCapabilities | null;
   readonly selection: ModelSelection;
 };
@@ -81,6 +82,7 @@ export function buildModelOptions(
         providerLabel,
         providerDriver: provider.driver,
         ...(provider.iconKey ? { providerIconKey: provider.iconKey } : {}),
+        isDefault: model.isDefault === true,
         capabilities: model.capabilities,
         selection: normalizeSelectionOptions(
           {
@@ -114,6 +116,7 @@ export function buildModelOptions(
           providerKey: fallbackModelSelection.instanceId,
           providerLabel,
           providerDriver: fallbackModelSelection.instanceId,
+          isDefault: false,
           capabilities: null,
           selection: fallbackModelSelection,
         });
@@ -142,7 +145,7 @@ export function resolveAdvertisedModelSelection(
         ?.selection ?? null
     );
   }
-  return options[0]?.selection ?? null;
+  return options.find((option) => option.isDefault)?.selection ?? options[0]?.selection ?? null;
 }
 
 export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyArray<ProviderGroup> {
