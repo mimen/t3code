@@ -60,6 +60,8 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { isMacPlatform } from "~/lib/utils";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { readLocalApi } from "../localApi";
+import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
+import { isRemoteOnlyDesktop } from "../desktopRuntimeCapabilities";
 import {
   deriveProjectGroupingOverrideKey,
   getProjectOrderKey,
@@ -91,6 +93,7 @@ import { formatRelativeTimeLabel } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
 import {
+  filterDesktopLocalSidebarItems,
   formatWorkingDurationLabel,
   hasUnseenCompletion,
   isTrailingDoubleClick,
@@ -858,6 +861,26 @@ export default function SidebarV2() {
   );
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const remoteOnlyDesktop = isRemoteOnlyDesktop();
+  const desktopLocalEnvironmentIds = useMemo(() => {
+    const environmentIds = new Set(
+      environments
+        .filter((environment) => isDesktopLocalConnectionTarget(environment.entry.target))
+        .map((environment) => environment.environmentId),
+    );
+    if (primaryEnvironmentId !== null) {
+      environmentIds.add(primaryEnvironmentId);
+    }
+    return environmentIds;
+  }, [environments, primaryEnvironmentId]);
+  const visibleProjects = useMemo(
+    () => filterDesktopLocalSidebarItems(projects, remoteOnlyDesktop, desktopLocalEnvironmentIds),
+    [desktopLocalEnvironmentIds, projects, remoteOnlyDesktop],
+  );
+  const visibleThreads = useMemo(
+    () => filterDesktopLocalSidebarItems(threads, remoteOnlyDesktop, desktopLocalEnvironmentIds),
+    [desktopLocalEnvironmentIds, remoteOnlyDesktop, threads],
+  );
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
@@ -887,7 +910,7 @@ export default function SidebarV2() {
   const orderedProjects = useMemo(
     () =>
       orderItemsByPreferredIds({
-        items: projects,
+        items: visibleProjects,
         preferredIds: projectOrder,
         getId: getProjectOrderKey,
         getPreferenceIds: (project) => [
@@ -895,12 +918,12 @@ export default function SidebarV2() {
           legacyProjectCwdPreferenceKey(project.workspaceRoot),
         ],
       }),
-    [projectOrder, projects],
+    [projectOrder, visibleProjects],
   );
   const unsortedProjectGroups = useMemo(
     () =>
       buildSidebarProjectSnapshots({
-        projects: sidebarProjectSortOrder === "manual" ? orderedProjects : projects,
+        projects: sidebarProjectSortOrder === "manual" ? orderedProjects : visibleProjects,
         settings: projectGroupingSettings,
         primaryEnvironmentId,
         resolveEnvironmentLabel: (environmentId) => environmentLabelById.get(environmentId) ?? null,
@@ -910,13 +933,14 @@ export default function SidebarV2() {
       orderedProjects,
       primaryEnvironmentId,
       projectGroupingSettings,
-      projects,
       sidebarProjectSortOrder,
+      visibleProjects,
     ],
   );
   const projectGroups = useMemo(
-    () => sortLogicalProjectsForSidebar(unsortedProjectGroups, threads, sidebarProjectSortOrder),
-    [sidebarProjectSortOrder, threads, unsortedProjectGroups],
+    () =>
+      sortLogicalProjectsForSidebar(unsortedProjectGroups, visibleThreads, sidebarProjectSortOrder),
+    [sidebarProjectSortOrder, unsortedProjectGroups, visibleThreads],
   );
   const serverProviders = useAtomValue(primaryServerProvidersAtom);
   const providerEntryByInstanceId = useMemo(
@@ -931,12 +955,12 @@ export default function SidebarV2() {
   const projectCwdByKey = useMemo(
     () =>
       new Map(
-        projects.map((project) => [
+        visibleProjects.map((project) => [
           `${project.environmentId}:${project.id}`,
           project.workspaceRoot,
         ]),
       ),
-    [projects],
+    [visibleProjects],
   );
   const projectDisplayNameByKey = useMemo(
     () =>
@@ -1020,7 +1044,7 @@ export default function SidebarV2() {
       if (!api) return;
 
       const memberKeys = new Set(members.map((member) => `${member.environmentId}:${member.id}`));
-      const projectThreads = threads.filter((thread) =>
+      const projectThreads = visibleThreads.filter((thread) =>
         memberKeys.has(`${thread.environmentId}:${thread.projectId}`),
       );
       const isWholeGroup = members.length === projectGroup.memberProjects.length;
@@ -1113,7 +1137,7 @@ export default function SidebarV2() {
         void router.navigate({ to: "/" });
       }
     },
-    [deleteProject, router, threads],
+    [deleteProject, router, visibleThreads],
   );
 
   const renameProjectMember = useCallback(
@@ -1173,7 +1197,7 @@ export default function SidebarV2() {
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const { activeThreads, settledThreads } = useMemo(() => {
     const now = `${nowMinute}:00.000Z`;
-    const visible = threads.filter(
+    const visible = visibleThreads.filter(
       (thread) =>
         thread.archivedAt === null &&
         (scopedProjectKeys === null ||
@@ -1209,7 +1233,7 @@ export default function SidebarV2() {
     nowMinute,
     scopedProjectKeys,
     serverConfigs,
-    threads,
+    visibleThreads,
   ]);
 
   // The settled tail renders in pages: history shouldn't dominate the
@@ -1781,7 +1805,7 @@ export default function SidebarV2() {
                       type="button"
                       className="relative size-8 justify-center rounded-md border-0 bg-transparent p-0 text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                       onClick={handleNewThreadClick}
-                      disabled={projects.length === 0}
+                      disabled={visibleProjects.length === 0}
                       aria-label="New thread"
                     />
                   }
@@ -1999,7 +2023,7 @@ export default function SidebarV2() {
           </TooltipProvider>
           {orderedThreads.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-              {projects.length === 0 ? (
+              {visibleProjects.length === 0 ? (
                 <>
                   <span>No projects yet</span>
                   <button

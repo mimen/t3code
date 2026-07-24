@@ -104,10 +104,14 @@ describe("ClientSettings glass opacity", () => {
 });
 
 describe("ClientSettings sidebar v2", () => {
-  it("defaults the beta off with a three-day auto-settle threshold", () => {
+  it("defaults Sidebar V2 on with a three-day auto-settle threshold", () => {
     const settings = decodeClientSettings({});
-    expect(settings.sidebarV2Enabled).toBe(false);
+    expect(settings.sidebarV2Enabled).toBe(true);
     expect(settings.sidebarAutoSettleAfterDays).toBe(3);
+  });
+
+  it("preserves an explicit Sidebar V2 disable choice", () => {
+    expect(decodeClientSettings({ sidebarV2Enabled: false }).sidebarV2Enabled).toBe(false);
   });
 
   it("allows auto-settle by inactivity to be disabled", () => {
