@@ -12,6 +12,7 @@ import * as Console from "effect/Console";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as References from "effect/References";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -59,6 +60,14 @@ function sessionImportRuntime(claudeHomePath: string) {
 }
 
 const LIVE_SERVER_TIMEOUT = Duration.seconds(30);
+const noJsonLoggers = Logger.layer([], { mergeWithExisting: false });
+
+function silenceJsonLogs<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  json: boolean,
+): Effect.Effect<A, E, R> {
+  return json ? Effect.provide(effect, noJsonLoggers) : effect;
+}
 
 const makeLiveServerClient = (origin: string) =>
   HttpApiClient.make(EnvironmentHttpApi, { baseUrl: origin });
@@ -304,20 +313,26 @@ const sessionStatusCommand = Command.make("status", {
     "Read active T3 attachment and provider runtime status for native Claude sessions.",
   ),
   Command.withHandler((flags) =>
-    Effect.gen(function* () {
-      const requestedLogLevel = yield* GlobalFlag.LogLevel;
-      const logLevel = flags.json ? Option.some("Warn" as const) : requestedLogLevel;
-      const config = yield* resolveCliAuthConfig(flags, logLevel);
-      const runtimeLayer = Layer.mergeAll(EnvironmentAuth.runtimeLayer, FetchHttpClient.layer).pipe(
-        Layer.provide(ServerConfig.layer(config)),
-        Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
-      );
-      const result = yield* Effect.gen(function* () {
-        const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
-        return yield* getClaudeSessionStatusFromLiveServer(environmentAuth, config);
-      }).pipe(Effect.provide(runtimeLayer));
-      return yield* renderStatusResult(result, flags.json);
-    }),
+    silenceJsonLogs(
+      Effect.gen(function* () {
+        const requestedLogLevel = yield* GlobalFlag.LogLevel;
+        const logLevel = flags.json ? Option.some("None" as const) : requestedLogLevel;
+        const config = yield* resolveCliAuthConfig(flags, logLevel);
+        const runtimeLayer = Layer.mergeAll(
+          EnvironmentAuth.runtimeLayer,
+          FetchHttpClient.layer,
+        ).pipe(
+          Layer.provide(ServerConfig.layer(config)),
+          Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
+        );
+        const result = yield* Effect.gen(function* () {
+          const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+          return yield* getClaudeSessionStatusFromLiveServer(environmentAuth, config);
+        }).pipe(Effect.provide(runtimeLayer));
+        return yield* renderStatusResult(result, flags.json);
+      }),
+      flags.json,
+    ),
   ),
 );
 
@@ -333,45 +348,22 @@ const sessionOpenCommand = Command.make("open", {
     "Attach or open a native Claude Code session, synchronize complete JSONL history, and seed native resume state.",
   ),
   Command.withHandler((flags) =>
-    Effect.gen(function* () {
-      const requestedLogLevel = yield* GlobalFlag.LogLevel;
-      const logLevel = flags.json ? Option.some("Warn" as const) : requestedLogLevel;
-      const config = yield* resolveCliAuthConfig(flags, logLevel);
-      const configuredClaudeHome = Option.getOrUndefined(flags.claudeHome)?.trim();
-      const claudeHomePath =
-        configuredClaudeHome && configuredClaudeHome.length > 0
-          ? NodePath.resolve(configuredClaudeHome)
-          : defaultClaudeHomePath();
-      const runtimeLayer = Layer.mergeAll(
-        sessionImportRuntime(claudeHomePath),
-        EnvironmentAuth.runtimeLayer,
-        FetchHttpClient.layer,
-      ).pipe(
-        Layer.provide(ServerConfig.layer(config)),
-        Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
-      );
-      const input = {
-        nativeSessionId: flags.resumeId,
-        cwd: flags.cwd,
-        ...(Option.isSome(flags.model) ? { model: flags.model.value } : {}),
-      };
-
-      const open = Effect.gen(function* () {
-        const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
-        if (configuredClaudeHome === undefined || configuredClaudeHome.length === 0) {
-          const liveResult = yield* tryOpenClaudeSessionOnLiveServer(
-            {
-              nativeSessionId: input.nativeSessionId,
-              cwd: input.cwd,
-              model: input.model,
-            },
-            environmentAuth,
-            config,
-          );
-          if (Option.isSome(liveResult)) {
-            return yield* renderLiveOpenResult(liveResult.value, flags.json);
-          }
-        } else {
+    silenceJsonLogs(
+      Effect.gen(function* () {
+        const requestedLogLevel = yield* GlobalFlag.LogLevel;
+        const logLevel = flags.json ? Option.some("None" as const) : requestedLogLevel;
+        const config = yield* resolveCliAuthConfig(flags, logLevel);
+        const configuredClaudeHome = Option.getOrUndefined(flags.claudeHome)?.trim();
+        const claudeHomePath =
+          configuredClaudeHome && configuredClaudeHome.length > 0
+            ? NodePath.resolve(configuredClaudeHome)
+            : defaultClaudeHomePath();
+        const input = {
+          nativeSessionId: flags.resumeId,
+          cwd: flags.cwd,
+          ...(Option.isSome(flags.model) ? { model: flags.model.value } : {}),
+        };
+        if (configuredClaudeHome !== undefined && configuredClaudeHome.length > 0) {
           const runtimeState = yield* readPersistedServerRuntimeState(
             config.serverRuntimeStatePath,
           );
@@ -391,20 +383,50 @@ const sessionOpenCommand = Command.make("open", {
             }
             yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
           }
+        } else {
+          const liveRuntimeLayer = Layer.mergeAll(
+            EnvironmentAuth.runtimeLayer,
+            FetchHttpClient.layer,
+          ).pipe(
+            Layer.provide(ServerConfig.layer(config)),
+            Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
+          );
+          const liveResult = yield* Effect.gen(function* () {
+            const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+            return yield* tryOpenClaudeSessionOnLiveServer(
+              {
+                nativeSessionId: input.nativeSessionId,
+                cwd: input.cwd,
+                model: input.model,
+              },
+              environmentAuth,
+              config,
+            );
+          }).pipe(Effect.provide(liveRuntimeLayer));
+          if (Option.isSome(liveResult)) {
+            return yield* renderLiveOpenResult(liveResult.value, flags.json);
+          }
         }
 
-        const coordinator = yield* ClaudeSessionCoordinator;
-        const result = yield* coordinator.open(input);
-        return yield* renderOpenResult(result, flags.json);
-      }).pipe(Effect.provide(runtimeLayer));
+        const standaloneRuntimeLayer = sessionImportRuntime(claudeHomePath).pipe(
+          Layer.provide(ServerConfig.layer(config)),
+          Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
+        );
+        const open = Effect.gen(function* () {
+          const coordinator = yield* ClaudeSessionCoordinator;
+          const result = yield* coordinator.open(input);
+          return yield* renderOpenResult(result, flags.json);
+        }).pipe(Effect.provide(standaloneRuntimeLayer));
 
-      if (!flags.json) {
-        return yield* open;
-      }
-      return yield* open.pipe(
-        Effect.catch((error) => Console.log(JSON.stringify(toClaudeSessionOpenFailure(error)))),
-      );
-    }),
+        if (!flags.json) {
+          return yield* open;
+        }
+        return yield* open.pipe(
+          Effect.catch((error) => Console.log(JSON.stringify(toClaudeSessionOpenFailure(error)))),
+        );
+      }),
+      flags.json,
+    ),
   ),
 );
 

@@ -1,5 +1,6 @@
 import {
   CheckpointRef,
+  CommandId,
   EventId,
   MessageId,
   ProjectId,
@@ -17,6 +18,7 @@ import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
+import { decideOrchestrationCommand } from "../decider.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -444,6 +446,128 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
       assert.equal(threadDetail._tag, "Some");
       if (threadDetail._tag === "Some") {
         assert.deepEqual(threadDetail.value, snapshot.threads[0]);
+      }
+
+      yield* sql`
+        INSERT INTO external_session_sources (
+          source_id,
+          provider_instance_id,
+          local_source_host,
+          native_session_id,
+          source_path,
+          source_cwd,
+          thread_id,
+          sync_state,
+          last_synced_at,
+          diagnostic,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'source-1',
+          'claudeAgent',
+          'test-host',
+          '123e4567-e89b-42d3-a456-426614174000',
+          '/tmp/source.jsonl',
+          '/tmp/project-1',
+          'thread-1',
+          'synced',
+          '2026-02-24T00:00:09.000Z',
+          NULL,
+          '2026-02-24T00:00:09.000Z',
+          '2026-02-24T00:00:09.000Z'
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_external_sessions (
+          thread_id,
+          source_id,
+          provider_instance_id,
+          native_session_id,
+          source_path,
+          source_cwd,
+          sync_state,
+          last_synced_at,
+          diagnostic,
+          updated_at
+        )
+        VALUES (
+          'thread-1',
+          'source-1',
+          'claudeAgent',
+          '123e4567-e89b-42d3-a456-426614174000',
+          '/tmp/source.jsonl',
+          '/tmp/project-1',
+          'synced',
+          '2026-02-24T00:00:09.000Z',
+          NULL,
+          '2026-02-24T00:00:09.000Z'
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_messages (
+          message_id,
+          thread_id,
+          turn_id,
+          role,
+          text,
+          is_streaming,
+          provenance_json,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'imported-message',
+          'thread-1',
+          NULL,
+          'assistant',
+          'imported history',
+          0,
+          '{"origin":"claude-code-jsonl","sourceId":"source-1","sourceItemKey":"item-1"}',
+          '2026-02-24T00:00:09.000Z',
+          '2026-02-24T00:00:09.000Z'
+        )
+      `;
+
+      const commandReadModel = yield* snapshotQuery.getCommandReadModel();
+      assert.deepEqual(
+        commandReadModel.threads[0]?.messages.map((message) => message.id),
+        [asMessageId("message-1")],
+      );
+      const importEvent = yield* decideOrchestrationCommand({
+        readModel: commandReadModel,
+        command: {
+          type: "thread.external-history.import",
+          commandId: CommandId.make("restart-dedupe-command"),
+          threadId: ThreadId.make("thread-1"),
+          sourceId: "source-1",
+          items: [],
+          deduplicatedMessages: [
+            {
+              sourceItemKey: "continuation:message:0",
+              contentHash: "continuation-hash",
+              messageId: asMessageId("message-1"),
+            },
+          ],
+          expectedCheckpointRevision: 0,
+          checkpoint: {
+            sourceId: "source-1",
+            fileIdentity: "1:1",
+            committedPrefixHash: "prefix-hash",
+            generation: 0,
+            committedByteOffset: 1,
+            committedLineOrdinal: 1,
+            observedSize: 1,
+            observedMtimeMs: 1,
+            parserVersion: "claude-jsonl-v1",
+            revision: 1,
+          },
+          createdAt: "2026-02-24T00:00:10.000Z",
+        },
+      });
+      assert.equal("type" in importEvent, true);
+      if ("type" in importEvent) {
+        assert.equal(importEvent.type, "thread.external-history-imported");
       }
     }),
   );

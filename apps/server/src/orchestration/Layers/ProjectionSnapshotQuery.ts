@@ -136,6 +136,23 @@ const ProjectionThreadExternalSessionDbRowSchema = Schema.Struct({
 });
 const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession;
 
+type ProjectionThreadMessageDbRow = Schema.Schema.Type<typeof ProjectionThreadMessageDbRowSchema>;
+
+function mapThreadMessageRow(row: ProjectionThreadMessageDbRow): OrchestrationMessage {
+  return {
+    id: row.messageId,
+    role: row.role,
+    text: row.text,
+    ...(row.attachments !== null ? { attachments: row.attachments } : {}),
+    turnId: row.turnId,
+    streaming: row.isStreaming === 1,
+    provenance: row.provenance ?? { origin: "t3" },
+    ...(row.timelineOrderKey !== null ? { timelineOrderKey: row.timelineOrderKey } : {}),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 type TimelineItemKind = "activity" | "message";
 
 interface TimelineCursor {
@@ -702,6 +719,38 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id ASC,
           COALESCE(timeline_order_key, created_at || ':' || message_id) ASC,
           message_id ASC
+      `,
+  });
+
+  const listCommandThreadMessageRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectionThreadMessageDbRowSchema,
+    execute: () =>
+      sql`
+        SELECT
+          messages.message_id AS "messageId",
+          messages.thread_id AS "threadId",
+          messages.turn_id AS "turnId",
+          messages.role,
+          messages.text,
+          messages.attachments_json AS "attachments",
+          messages.is_streaming AS "isStreaming",
+          messages.provenance_json AS "provenance",
+          messages.timeline_order_key AS "timelineOrderKey",
+          messages.created_at AS "createdAt",
+          messages.updated_at AS "updatedAt"
+        FROM projection_thread_messages AS messages
+        INNER JOIN projection_thread_external_sessions AS external_sessions
+          ON external_sessions.thread_id = messages.thread_id
+        WHERE messages.provenance_json IS NULL
+           OR json_extract(messages.provenance_json, '$.origin') <> 'claude-code-jsonl'
+        ORDER BY
+          messages.thread_id ASC,
+          COALESCE(
+            messages.timeline_order_key,
+            messages.created_at || ':' || messages.message_id
+          ) ASC,
+          messages.message_id ASC
       `,
   });
 
@@ -1734,6 +1783,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               ),
             ),
           ),
+          listCommandThreadMessageRows(undefined).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getCommandReadModel:listMessages:query",
+                "ProjectionSnapshotQuery.getCommandReadModel:listMessages:decodeRows",
+              ),
+            ),
+          ),
           listThreadExternalSessionRows(undefined).pipe(
             Effect.mapError(
               toPersistenceSqlOrDecodeError(
@@ -1781,6 +1838,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           ([
             projectRows,
             threadRows,
+            messageRows,
             externalSessionRows,
             proposedPlanRows,
             sessionRows,
@@ -1811,6 +1869,13 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               }
               for (let index = 0; index < threadRows.length; index += 1) {
                 const row = threadRows[index];
+                if (!row) {
+                  continue;
+                }
+                updatedAt = maxIso(updatedAt, row.updatedAt);
+              }
+              for (let index = 0; index < messageRows.length; index += 1) {
+                const row = messageRows[index];
                 if (!row) {
                   continue;
                 }
@@ -1866,12 +1931,23 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 }
                 latestTurnByThread.set(row.threadId, mapLatestTurn(row));
               }
+              const messagesByThread = new Map<string, Array<OrchestrationMessage>>();
               const proposedPlansByThread = new Map<string, Array<OrchestrationProposedPlan>>();
               const sessionByThread = new Map<string, OrchestrationSession>();
               const externalSessionsByThread = new Map<
                 string,
                 OrchestrationExternalSessionSummary
               >();
+
+              for (let index = 0; index < messageRows.length; index += 1) {
+                const row = messageRows[index];
+                if (!row) {
+                  continue;
+                }
+                const threadMessages = messagesByThread.get(row.threadId) ?? [];
+                threadMessages.push(mapThreadMessageRow(row));
+                messagesByThread.set(row.threadId, threadMessages);
+              }
 
               for (let index = 0; index < sessionRows.length; index += 1) {
                 const row = sessionRows[index];
@@ -1919,7 +1995,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   settledOverride: row.settledOverride,
                   settledAt: row.settledAt,
                   deletedAt: row.deletedAt,
-                  messages: [],
+                  messages: messagesByThread.get(row.threadId) ?? [],
                   proposedPlans: proposedPlansByThread.get(row.threadId) ?? [],
                   activities: [],
                   checkpoints: [],

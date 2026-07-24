@@ -6,7 +6,6 @@ import {
   MessageId,
   type EnvironmentId,
   type ModelSelection,
-  type OrchestrationThreadTimelinePage,
   type ProviderInteractionMode,
   type RuntimeMode,
   type ThreadId,
@@ -39,37 +38,15 @@ import {
 import { setPendingConnectionError } from "../state/use-remote-environment-registry";
 import { useSelectedThreadDetail } from "../state/use-thread-detail";
 import { useThreadSelection } from "../state/use-thread-selection";
+import {
+  type ExternalTimelinePage,
+  mergeRefreshedTimelinePage,
+  mergeTimelinePages,
+} from "./externalTimelinePaging";
 import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
-
-type ExternalTimelinePage = OrchestrationThreadTimelinePage & { readonly threadId: ThreadId };
-
-function mergeTimelinePages(input: {
-  readonly existing: ExternalTimelinePage | null;
-  readonly page: OrchestrationThreadTimelinePage;
-  readonly threadId: ThreadId;
-}): ExternalTimelinePage {
-  const byKey = new Map<string, OrchestrationThreadTimelinePage["items"][number]>();
-  for (const item of input.existing?.threadId === input.threadId ? input.existing.items : []) {
-    byKey.set(
-      item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
-      item,
-    );
-  }
-  for (const item of input.page.items) {
-    byKey.set(
-      item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
-      item,
-    );
-  }
-  return {
-    threadId: input.threadId,
-    items: [...byKey.values()],
-    nextCursor: input.page.nextCursor,
-  };
-}
 
 export function appendReviewCommentToDraft(input: {
   readonly environmentId: EnvironmentId;
@@ -149,16 +126,13 @@ export function useThreadComposerState() {
       ) {
         return;
       }
-      setExternalTimelinePage((existing) => {
-        const merged = mergeTimelinePages({
+      setExternalTimelinePage((existing) =>
+        mergeRefreshedTimelinePage({
           existing,
           page: result.value,
           threadId: selectedThreadShell.id,
-        });
-        return existing?.threadId === selectedThreadShell.id
-          ? { ...merged, nextCursor: existing.nextCursor }
-          : merged;
-      });
+        }),
+      );
     })();
     return () => {
       cancelled = true;
