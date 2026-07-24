@@ -16,8 +16,10 @@ import type {
   OrchestrationThread,
   OrchestrationThreadDetailSnapshot,
   OrchestrationThreadShell,
+  OrchestrationThreadTimelinePage,
   ProjectId,
   ThreadId,
+  ThreadTimelinePageInput,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import type * as Option from "effect/Option";
@@ -158,6 +160,15 @@ export interface ProjectionSnapshotQueryShape {
   readonly getThreadDetailById: (
     threadId: ThreadId,
   ) => Effect.Effect<Option.Option<OrchestrationThread>, ProjectionRepositoryError>;
+
+  /**
+   * Read a chronological page from the durable unified message/activity timeline.
+   * `beforeCursor` is opaque and identifies the exclusive upper bound for older
+   * history; it is independent from the event-stream `afterSequence` cursor.
+   */
+  readonly getThreadTimelinePage: (
+    input: ThreadTimelinePageInput,
+  ) => Effect.Effect<Option.Option<OrchestrationThreadTimelinePage>, ProjectionRepositoryError>;
 
   /**
    * Read a single active thread detail together with the projection snapshot

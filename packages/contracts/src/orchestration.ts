@@ -30,6 +30,11 @@ export const ORCHESTRATION_WS_METHODS = {
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
+  listClaudeSessions: "orchestration.listClaudeSessions",
+  previewClaudeSession: "orchestration.previewClaudeSession",
+  openClaudeSession: "orchestration.openClaudeSession",
+  syncClaudeSession: "orchestration.syncClaudeSession",
+  getThreadTimelinePage: "orchestration.getThreadTimelinePage",
 } as const;
 
 export const ProviderApprovalPolicy = Schema.Literals([
@@ -117,6 +122,7 @@ export type ModelSelection = typeof ModelSelection.Type;
 export const RuntimeMode = Schema.Literals([
   "approval-required",
   "auto-accept-edits",
+  "auto",
   "full-access",
 ]);
 export type RuntimeMode = typeof RuntimeMode.Type;
@@ -224,6 +230,43 @@ export type OrchestrationProject = typeof OrchestrationProject.Type;
 export const OrchestrationMessageRole = Schema.Literals(["user", "assistant", "system"]);
 export type OrchestrationMessageRole = typeof OrchestrationMessageRole.Type;
 
+export const OrchestrationItemOrigin = Schema.Literals(["t3", "claude-code-jsonl"]);
+export type OrchestrationItemOrigin = typeof OrchestrationItemOrigin.Type;
+
+/**
+ * Immutable provenance for timeline records sourced from a native Claude Code
+ * JSONL. Normal T3-originated records omit this field at rest and are exposed
+ * with the default `{ origin: "t3" }` by read-model projectors.
+ */
+export const OrchestrationItemProvenance = Schema.Struct({
+  origin: OrchestrationItemOrigin,
+  sourceId: Schema.optional(TrimmedNonEmptyString),
+  sourceItemKey: Schema.optional(TrimmedNonEmptyString),
+  label: Schema.optional(TrimmedNonEmptyString),
+});
+export type OrchestrationItemProvenance = typeof OrchestrationItemProvenance.Type;
+
+export const ExternalSessionSyncState = Schema.Literals([
+  "attached",
+  "synced",
+  "failed",
+  "desynced",
+]);
+export type ExternalSessionSyncState = typeof ExternalSessionSyncState.Type;
+
+export const OrchestrationExternalSessionSummary = Schema.Struct({
+  sourceId: TrimmedNonEmptyString,
+  providerInstanceId: ProviderInstanceId,
+  nativeSessionId: TrimmedNonEmptyString,
+  sourcePath: TrimmedNonEmptyString,
+  sourceCwd: TrimmedNonEmptyString,
+  state: ExternalSessionSyncState,
+  lastSyncedAt: Schema.NullOr(IsoDateTime),
+  diagnostic: Schema.NullOr(Schema.String),
+  updatedAt: IsoDateTime,
+});
+export type OrchestrationExternalSessionSummary = typeof OrchestrationExternalSessionSummary.Type;
+
 export const OrchestrationMessage = Schema.Struct({
   id: MessageId,
   role: OrchestrationMessageRole,
@@ -231,6 +274,8 @@ export const OrchestrationMessage = Schema.Struct({
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   turnId: Schema.NullOr(TurnId),
   streaming: Schema.Boolean,
+  provenance: Schema.optional(OrchestrationItemProvenance),
+  timelineOrderKey: Schema.optional(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -318,9 +363,31 @@ export const OrchestrationThreadActivity = Schema.Struct({
   payload: Schema.Unknown,
   turnId: Schema.NullOr(TurnId),
   sequence: Schema.optional(NonNegativeInt),
+  provenance: Schema.optional(OrchestrationItemProvenance),
+  timelineOrderKey: Schema.optional(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
 });
 export type OrchestrationThreadActivity = typeof OrchestrationThreadActivity.Type;
+
+/** A canonical timeline record used when loading older thread history. */
+export const OrchestrationTimelineItem = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("message"),
+    message: OrchestrationMessage,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("activity"),
+    activity: OrchestrationThreadActivity,
+  }),
+]);
+export type OrchestrationTimelineItem = typeof OrchestrationTimelineItem.Type;
+
+/** A chronologically ordered, cursor-addressable page of the unified timeline. */
+export const OrchestrationThreadTimelinePage = Schema.Struct({
+  items: Schema.Array(OrchestrationTimelineItem),
+  nextCursor: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type OrchestrationThreadTimelinePage = typeof OrchestrationThreadTimelinePage.Type;
 
 const OrchestrationLatestTurnState = Schema.Literals([
   "running",
@@ -356,6 +423,10 @@ export const OrchestrationThread = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  settledAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   deletedAt: Schema.NullOr(IsoDateTime),
   messages: Schema.Array(OrchestrationMessage),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
@@ -364,6 +435,7 @@ export const OrchestrationThread = Schema.Struct({
   activities: Schema.Array(OrchestrationThreadActivity),
   checkpoints: Schema.Array(OrchestrationCheckpointSummary),
   session: Schema.NullOr(OrchestrationSession),
+  externalSession: Schema.optional(OrchestrationExternalSessionSummary),
 });
 export type OrchestrationThread = typeof OrchestrationThread.Type;
 
@@ -402,19 +474,31 @@ export const OrchestrationThreadShell = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  settledAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   hasPendingApprovals: Schema.Boolean,
   hasPendingUserInput: Schema.Boolean,
   hasActionableProposedPlan: Schema.Boolean,
+  externalSession: Schema.optional(OrchestrationExternalSessionSummary),
 });
 export type OrchestrationThreadShell = typeof OrchestrationThreadShell.Type;
+
+export const OrchestrationShellFocusRequest = Schema.Struct({
+  requestId: TrimmedNonEmptyString,
+  threadId: ThreadId,
+});
+export type OrchestrationShellFocusRequest = typeof OrchestrationShellFocusRequest.Type;
 
 export const OrchestrationShellSnapshot = Schema.Struct({
   snapshotSequence: NonNegativeInt,
   projects: Schema.Array(OrchestrationProjectShell),
   threads: Schema.Array(OrchestrationThreadShell),
   updatedAt: IsoDateTime,
+  focusRequest: Schema.optional(OrchestrationShellFocusRequest),
 });
 export type OrchestrationShellSnapshot = typeof OrchestrationShellSnapshot.Type;
 
@@ -444,10 +528,17 @@ export type OrchestrationShellStreamEvent = typeof OrchestrationShellStreamEvent
 
 export const OrchestrationShellStreamItem = Schema.Union([
   Schema.Struct({
+    kind: Schema.Literal("synchronized"),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("snapshot"),
     snapshot: OrchestrationShellSnapshot,
   }),
   OrchestrationShellStreamEvent,
+  Schema.Struct({
+    kind: Schema.Literal("thread-focus-requested"),
+    request: OrchestrationShellFocusRequest,
+  }),
 ]);
 export type OrchestrationShellStreamItem = typeof OrchestrationShellStreamItem.Type;
 
@@ -461,6 +552,11 @@ export const OrchestrationSubscribeShellInput = Schema.Struct({
    * client).
    */
   afterSequence: Schema.optionalKey(NonNegativeInt),
+  /**
+   * Requests an explicit marker after the subscription has emitted its initial
+   * snapshot or catch-up replay and before it begins emitting live events.
+   */
+  requestCompletionMarker: Schema.optionalKey(Schema.Boolean),
 });
 export type OrchestrationSubscribeShellInput = typeof OrchestrationSubscribeShellInput.Type;
 
@@ -474,6 +570,11 @@ export const OrchestrationSubscribeThreadInput = Schema.Struct({
    * sequence on the client).
    */
   afterSequence: Schema.optionalKey(NonNegativeInt),
+  /**
+   * Requests an explicit marker after the subscription has emitted its initial
+   * snapshot or catch-up replay and before it begins emitting live events.
+   */
+  requestCompletionMarker: Schema.optionalKey(Schema.Boolean),
 });
 export type OrchestrationSubscribeThreadInput = typeof OrchestrationSubscribeThreadInput.Type;
 
@@ -543,6 +644,22 @@ const ThreadUnarchiveCommand = Schema.Struct({
   type: Schema.Literal("thread.unarchive"),
   commandId: CommandId,
   threadId: ThreadId,
+});
+
+const ThreadSettleCommand = Schema.Struct({
+  type: Schema.Literal("thread.settle"),
+  commandId: CommandId,
+  threadId: ThreadId,
+});
+
+const ThreadUnsettleCommand = Schema.Struct({
+  type: Schema.Literal("thread.unsettle"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  // Commands only carry "user": activity un-settles are decided server-side
+  // (the decider emits thread.unsettled(reason: "activity") events directly,
+  // never through this command), so a client cannot forge the neutral reset.
+  reason: Schema.Literal("user"),
 });
 
 const ThreadMetaUpdateCommand = Schema.Struct({
@@ -687,6 +804,8 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadDeleteCommand,
   ThreadArchiveCommand,
   ThreadUnarchiveCommand,
+  ThreadSettleCommand,
+  ThreadUnsettleCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -708,6 +827,8 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadDeleteCommand,
   ThreadArchiveCommand,
   ThreadUnarchiveCommand,
+  ThreadSettleCommand,
+  ThreadUnsettleCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -785,6 +906,333 @@ const ThreadRevertCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+export const CLAUDE_SESSION_CATALOGUE_PROTOCOL_VERSION = 1 as const;
+export const CLAUDE_SESSION_CATALOGUE_DEFAULT_LIMIT = 50;
+export const CLAUDE_SESSION_CATALOGUE_MAX_LIMIT = 200;
+
+export const ClaudeSessionCatalogueActivityWindow = Schema.Literals(["today", "7d", "30d", "all"]);
+export type ClaudeSessionCatalogueActivityWindow = typeof ClaudeSessionCatalogueActivityWindow.Type;
+
+export const ClaudeSessionCatalogueSort = Schema.Literals(["nativeActivity", "cwd", "title"]);
+export type ClaudeSessionCatalogueSort = typeof ClaudeSessionCatalogueSort.Type;
+
+export const ClaudeSessionCatalogueFreshnessMode = Schema.Literals([
+  "allow-stale",
+  "require-fresh",
+]);
+export type ClaudeSessionCatalogueFreshnessMode = typeof ClaudeSessionCatalogueFreshnessMode.Type;
+
+export const ClaudeSessionCatalogueQuery = Schema.Struct({
+  query: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(256))),
+  cwd: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(4_096))),
+  cwdPrefix: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(4_096))),
+  projectRoot: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(4_096))),
+  activityWindow: Schema.optionalKey(ClaudeSessionCatalogueActivityWindow),
+  sort: Schema.optionalKey(ClaudeSessionCatalogueSort),
+  limit: Schema.optionalKey(
+    NonNegativeInt.check(
+      Schema.isGreaterThan(0),
+      Schema.isLessThanOrEqualTo(CLAUDE_SESSION_CATALOGUE_MAX_LIMIT),
+    ),
+  ),
+  cursor: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(4_096))),
+  freshness: Schema.optionalKey(ClaudeSessionCatalogueFreshnessMode),
+});
+export type ClaudeSessionCatalogueQuery = typeof ClaudeSessionCatalogueQuery.Type;
+
+export const ClaudeSessionCatalogueRefreshStats = Schema.Struct({
+  scanned: NonNegativeInt,
+  parsed: NonNegativeInt,
+  skipped: NonNegativeInt,
+  removed: NonNegativeInt,
+});
+export type ClaudeSessionCatalogueRefreshStats = typeof ClaudeSessionCatalogueRefreshStats.Type;
+
+export const ClaudeSessionCatalogueSourceStatus = Schema.Struct({
+  generation: NonNegativeInt,
+  phase: Schema.Literals(["idle", "refreshing", "error"]),
+  freshness: Schema.Literals(["uninitialized", "fresh", "stale"]),
+  indexedAt: Schema.NullOr(IsoDateTime),
+  refreshedAt: Schema.NullOr(IsoDateTime),
+  ageMs: Schema.NullOr(NonNegativeInt),
+  staleAfterMs: NonNegativeInt,
+  rowCount: NonNegativeInt,
+  lastError: Schema.NullOr(
+    Schema.Struct({
+      at: IsoDateTime,
+      message: TrimmedNonEmptyString,
+    }),
+  ),
+  lastRefresh: ClaudeSessionCatalogueRefreshStats,
+});
+export type ClaudeSessionCatalogueSourceStatus = typeof ClaudeSessionCatalogueSourceStatus.Type;
+
+export const ClaudeSessionCatalogueMode = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("ccs-daemon"),
+    protocolVersion: Schema.Literal(CLAUDE_SESSION_CATALOGUE_PROTOCOL_VERSION),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("builtin-degraded"),
+    reason: TrimmedNonEmptyString,
+    candidateLimit: NonNegativeInt,
+  }),
+]);
+export type ClaudeSessionCatalogueMode = typeof ClaudeSessionCatalogueMode.Type;
+
+export const ClaudeSessionAttachmentRuntimeStatus = Schema.Literals([
+  "starting",
+  "running",
+  "stopped",
+  "error",
+]);
+export type ClaudeSessionAttachmentRuntimeStatus = typeof ClaudeSessionAttachmentRuntimeStatus.Type;
+
+export const ClaudeSessionAttachmentAnnotation = Schema.Struct({
+  sourceId: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  projectId: ProjectId,
+  state: ExternalSessionSyncState,
+  lastSyncedAt: Schema.NullOr(IsoDateTime),
+  diagnostic: Schema.NullOr(Schema.String),
+  runtimeStatus: Schema.NullOr(ClaudeSessionAttachmentRuntimeStatus),
+  runtimeLastSeenAt: Schema.NullOr(IsoDateTime),
+});
+export type ClaudeSessionAttachmentAnnotation = typeof ClaudeSessionAttachmentAnnotation.Type;
+
+export const ClaudeSessionCatalogEntry = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  localSourceHost: TrimmedNonEmptyString,
+  nativeSessionId: TrimmedNonEmptyString,
+  sourceCwd: TrimmedNonEmptyString,
+  projectRoot: TrimmedNonEmptyString,
+  projectName: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  titleSource: Schema.Literals(["native", "codex", "fallback"]),
+  branch: Schema.NullOr(Schema.String),
+  firstActivityAt: Schema.NullOr(IsoDateTime),
+  latestActivityAt: Schema.NullOr(IsoDateTime),
+  messageCount: NonNegativeInt,
+  observedSize: NonNegativeInt,
+  observedMtimeMs: NonNegativeInt,
+  attachment: Schema.optional(ClaudeSessionAttachmentAnnotation),
+  // Fleet-skew compatibility only. The v1 daemon-backed list never returns source paths or
+  // malformed-record counts; attach and preview resolve the source through the owning server.
+  sourcePath: Schema.optional(TrimmedNonEmptyString),
+  malformedRecordCount: Schema.optional(NonNegativeInt),
+});
+export type ClaudeSessionCatalogEntry = typeof ClaudeSessionCatalogEntry.Type;
+
+export const ClaudeSessionCataloguePage = Schema.Struct({
+  sessions: Schema.Array(ClaudeSessionCatalogEntry),
+  nextCursor: Schema.NullOr(TrimmedNonEmptyString),
+  sourceStatus: ClaudeSessionCatalogueSourceStatus,
+  mode: ClaudeSessionCatalogueMode,
+});
+export type ClaudeSessionCataloguePage = typeof ClaudeSessionCataloguePage.Type;
+
+export const CLAUDE_SESSION_PREVIEW_EXCERPT_MAX_CHARS = 400;
+
+export const ClaudeSessionPreviewInput = Schema.Struct({
+  nativeSessionId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  cwd: TrimmedNonEmptyString.check(Schema.isMaxLength(4_096)),
+});
+export type ClaudeSessionPreviewInput = typeof ClaudeSessionPreviewInput.Type;
+
+const ClaudeSessionPreviewExcerpt = Schema.String.check(
+  Schema.isMaxLength(CLAUDE_SESSION_PREVIEW_EXCERPT_MAX_CHARS),
+);
+
+export const ClaudeSessionPreview = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  localSourceHost: TrimmedNonEmptyString,
+  nativeSessionId: TrimmedNonEmptyString,
+  sourceCwd: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  firstUserExcerpt: Schema.NullOr(ClaudeSessionPreviewExcerpt),
+  latestUserExcerpt: Schema.NullOr(ClaudeSessionPreviewExcerpt),
+  latestAssistantExcerpt: Schema.NullOr(ClaudeSessionPreviewExcerpt),
+  isPartial: Schema.Boolean,
+});
+export type ClaudeSessionPreview = typeof ClaudeSessionPreview.Type;
+
+export const ClaudeSessionAttachmentStatus = Schema.Struct({
+  providerInstanceId: ProviderInstanceId,
+  localSourceHost: TrimmedNonEmptyString,
+  nativeSessionId: TrimmedNonEmptyString,
+  sourceCwd: TrimmedNonEmptyString,
+  ...ClaudeSessionAttachmentAnnotation.fields,
+});
+export type ClaudeSessionAttachmentStatus = typeof ClaudeSessionAttachmentStatus.Type;
+
+export const ClaudeSessionAttachmentStatusSnapshot = Schema.Struct({
+  protocolVersion: Schema.Literal(CLAUDE_SESSION_CATALOGUE_PROTOCOL_VERSION),
+  generatedAt: IsoDateTime,
+  attachments: Schema.Array(ClaudeSessionAttachmentStatus),
+});
+export type ClaudeSessionAttachmentStatusSnapshot =
+  typeof ClaudeSessionAttachmentStatusSnapshot.Type;
+
+export const ClaudeSessionAttachmentStatusCliResult = Schema.Union([
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    value: ClaudeSessionAttachmentStatusSnapshot,
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    error: Schema.Struct({
+      code: Schema.Literals(["t3_unavailable", "request_failed"]),
+      message: TrimmedNonEmptyString,
+    }),
+  }),
+]);
+export type ClaudeSessionAttachmentStatusCliResult =
+  typeof ClaudeSessionAttachmentStatusCliResult.Type;
+
+export const ClaudeSessionOpenInput = Schema.Struct({
+  nativeSessionId: Schema.String,
+  cwd: Schema.String,
+  model: Schema.optional(Schema.String),
+});
+export type ClaudeSessionOpenInput = typeof ClaudeSessionOpenInput.Type;
+
+export const ClaudeSessionOpenErrorCode = Schema.Literals([
+  "t3_unavailable",
+  "invalid_resume_id",
+  "invalid_cwd",
+  "source_not_found",
+  "provider_unavailable",
+  "request_failed",
+]);
+export type ClaudeSessionOpenErrorCode = typeof ClaudeSessionOpenErrorCode.Type;
+
+export const ClaudeSessionOpenResult = Schema.Union([
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    value: Schema.Struct({
+      threadId: ThreadId,
+      projectId: ProjectId,
+      created: Schema.Boolean,
+    }),
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    error: Schema.Struct({
+      code: ClaudeSessionOpenErrorCode,
+      message: TrimmedNonEmptyString,
+    }),
+  }),
+]);
+export type ClaudeSessionOpenResult = typeof ClaudeSessionOpenResult.Type;
+
+export const ClaudeSessionSyncInput = Schema.Struct({
+  sourceId: TrimmedNonEmptyString,
+});
+export type ClaudeSessionSyncInput = typeof ClaudeSessionSyncInput.Type;
+
+export const ClaudeSessionSyncResult = Schema.Struct({
+  sourceId: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  importedItemCount: NonNegativeInt,
+  committedByteOffset: NonNegativeInt,
+  committedLineOrdinal: NonNegativeInt,
+  hasIncompleteTail: Schema.Boolean,
+  syncedAt: IsoDateTime,
+});
+export type ClaudeSessionSyncResult = typeof ClaudeSessionSyncResult.Type;
+
+export const ThreadTimelinePageInput = Schema.Struct({
+  threadId: ThreadId,
+  beforeCursor: Schema.optional(TrimmedNonEmptyString),
+  limit: Schema.optional(
+    NonNegativeInt.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(200)),
+  ),
+});
+export type ThreadTimelinePageInput = typeof ThreadTimelinePageInput.Type;
+
+export const ExternalSessionCheckpoint = Schema.Struct({
+  sourceId: TrimmedNonEmptyString,
+  fileIdentity: TrimmedNonEmptyString,
+  committedPrefixHash: TrimmedNonEmptyString,
+  generation: NonNegativeInt,
+  committedByteOffset: NonNegativeInt,
+  committedLineOrdinal: NonNegativeInt,
+  observedSize: NonNegativeInt,
+  observedMtimeMs: NonNegativeInt,
+  parserVersion: TrimmedNonEmptyString,
+  revision: NonNegativeInt,
+});
+export type ExternalSessionCheckpoint = typeof ExternalSessionCheckpoint.Type;
+
+export const ExternalHistoryItem = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("message"),
+    sourceItemKey: TrimmedNonEmptyString,
+    contentHash: TrimmedNonEmptyString,
+    message: OrchestrationMessage,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("activity"),
+    sourceItemKey: TrimmedNonEmptyString,
+    contentHash: TrimmedNonEmptyString,
+    activity: OrchestrationThreadActivity,
+  }),
+]);
+export type ExternalHistoryItem = typeof ExternalHistoryItem.Type;
+
+export const ExternalHistoryDeduplicatedMessage = Schema.Struct({
+  sourceItemKey: TrimmedNonEmptyString,
+  contentHash: TrimmedNonEmptyString,
+  messageId: MessageId,
+});
+export type ExternalHistoryDeduplicatedMessage = typeof ExternalHistoryDeduplicatedMessage.Type;
+
+export const ThreadExternalSessionAttachedPayload = Schema.Struct({
+  threadId: ThreadId,
+  externalSession: OrchestrationExternalSessionSummary,
+  localSourceHost: TrimmedNonEmptyString,
+  checkpoint: ExternalSessionCheckpoint,
+});
+export type ThreadExternalSessionAttachedPayload = typeof ThreadExternalSessionAttachedPayload.Type;
+
+export const ThreadExternalHistoryImportedPayload = Schema.Struct({
+  threadId: ThreadId,
+  sourceId: TrimmedNonEmptyString,
+  items: Schema.Array(ExternalHistoryItem),
+  deduplicatedMessages: Schema.optionalKey(Schema.Array(ExternalHistoryDeduplicatedMessage)),
+  expectedCheckpointRevision: NonNegativeInt,
+  checkpoint: ExternalSessionCheckpoint,
+});
+export type ThreadExternalHistoryImportedPayload = typeof ThreadExternalHistoryImportedPayload.Type;
+
+export const ThreadExternalSessionSyncStateUpdatedPayload = Schema.Struct({
+  threadId: ThreadId,
+  externalSession: OrchestrationExternalSessionSummary,
+});
+export type ThreadExternalSessionSyncStateUpdatedPayload =
+  typeof ThreadExternalSessionSyncStateUpdatedPayload.Type;
+
+const ThreadExternalSessionAttachCommand = Schema.Struct({
+  type: Schema.Literal("thread.external-session.attach"),
+  commandId: CommandId,
+  ...ThreadExternalSessionAttachedPayload.fields,
+  createdAt: IsoDateTime,
+});
+
+const ThreadExternalHistoryImportCommand = Schema.Struct({
+  type: Schema.Literal("thread.external-history.import"),
+  commandId: CommandId,
+  ...ThreadExternalHistoryImportedPayload.fields,
+  createdAt: IsoDateTime,
+});
+
+const ThreadExternalSessionSyncStateSetCommand = Schema.Struct({
+  type: Schema.Literal("thread.external-session.sync-state.set"),
+  commandId: CommandId,
+  ...ThreadExternalSessionSyncStateUpdatedPayload.fields,
+  createdAt: IsoDateTime,
+});
+
 const InternalOrchestrationCommand = Schema.Union([
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
@@ -793,6 +1241,9 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadTurnDiffCompleteCommand,
   ThreadActivityAppendCommand,
   ThreadRevertCompleteCommand,
+  ThreadExternalSessionAttachCommand,
+  ThreadExternalHistoryImportCommand,
+  ThreadExternalSessionSyncStateSetCommand,
 ]);
 export type InternalOrchestrationCommand = typeof InternalOrchestrationCommand.Type;
 
@@ -810,6 +1261,8 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.deleted",
   "thread.archived",
   "thread.unarchived",
+  "thread.settled",
+  "thread.unsettled",
   "thread.meta-updated",
   "thread.runtime-mode-set",
   "thread.interaction-mode-set",
@@ -825,6 +1278,9 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
   "thread.activity-appended",
+  "thread.external-session-attached",
+  "thread.external-history-imported",
+  "thread.external-session-sync-state-updated",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
 
@@ -886,6 +1342,18 @@ export const ThreadArchivedPayload = Schema.Struct({
 
 export const ThreadUnarchivedPayload = Schema.Struct({
   threadId: ThreadId,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadSettledPayload = Schema.Struct({
+  threadId: ThreadId,
+  settledAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadUnsettledPayload = Schema.Struct({
+  threadId: ThreadId,
+  reason: Schema.Literals(["user", "activity"]),
   updatedAt: IsoDateTime,
 });
 
@@ -1058,6 +1526,16 @@ export const OrchestrationEvent = Schema.Union([
   }),
   Schema.Struct({
     ...EventBaseFields,
+    type: Schema.Literal("thread.settled"),
+    payload: ThreadSettledPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.unsettled"),
+    payload: ThreadUnsettledPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
     type: Schema.Literal("thread.meta-updated"),
     payload: ThreadMetaUpdatedPayload,
   }),
@@ -1131,10 +1609,28 @@ export const OrchestrationEvent = Schema.Union([
     type: Schema.Literal("thread.activity-appended"),
     payload: ThreadActivityAppendedPayload,
   }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.external-session-attached"),
+    payload: ThreadExternalSessionAttachedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.external-history-imported"),
+    payload: ThreadExternalHistoryImportedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.external-session-sync-state-updated"),
+    payload: ThreadExternalSessionSyncStateUpdatedPayload,
+  }),
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;
 
 export const OrchestrationThreadStreamItem = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("synchronized"),
+  }),
   Schema.Struct({
     kind: Schema.Literal("snapshot"),
     snapshot: OrchestrationThreadDetailSnapshot,
@@ -1268,6 +1764,26 @@ export const OrchestrationRpcSchemas = {
   subscribeShell: {
     input: OrchestrationSubscribeShellInput,
     output: OrchestrationShellStreamItem,
+  },
+  listClaudeSessions: {
+    input: ClaudeSessionCatalogueQuery,
+    output: ClaudeSessionCataloguePage,
+  },
+  previewClaudeSession: {
+    input: ClaudeSessionPreviewInput,
+    output: ClaudeSessionPreview,
+  },
+  openClaudeSession: {
+    input: ClaudeSessionOpenInput,
+    output: ClaudeSessionOpenResult,
+  },
+  syncClaudeSession: {
+    input: ClaudeSessionSyncInput,
+    output: ClaudeSessionSyncResult,
+  },
+  getThreadTimelinePage: {
+    input: ThreadTimelinePageInput,
+    output: OrchestrationThreadTimelinePage,
   },
 } as const;
 

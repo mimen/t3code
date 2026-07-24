@@ -10,6 +10,12 @@ import {
 } from "./electron-launcher.mjs";
 import { waitForResources } from "./wait-for-resources.mjs";
 
+if (process.env.T3CODE_ALLOW_DEV_DESKTOP !== "1") {
+  throw new Error(
+    "Refusing to launch T3 Code (Dev). Set T3CODE_ALLOW_DEV_DESKTOP=1 only for an explicitly requested source/dev run.",
+  );
+}
+
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
 if (!devServerUrl) {
   throw new Error("VITE_DEV_SERVER_URL is required for desktop development.");

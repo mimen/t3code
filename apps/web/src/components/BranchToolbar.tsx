@@ -11,15 +11,21 @@ import {
 import { memo, useMemo } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
+import {
+  isRemoteOnlyDesktop,
+  REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM,
+} from "../desktopRuntimeCapabilities";
 import { useProject, useThread } from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import {
+  filterSelectableEnvironments,
   type EnvMode,
   type EnvironmentOption,
   resolveCurrentWorkspaceLabel,
   resolveEnvModeLabel,
   resolveEffectiveEnvMode,
   resolveLockedWorkspaceLabel,
+  shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
 import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
@@ -60,6 +66,7 @@ interface MobileRunContextSelectorProps {
   environmentId: EnvironmentId;
   availableEnvironments: readonly EnvironmentOption[] | undefined;
   showEnvironmentPicker: boolean;
+  showEnvironmentIndicator: boolean;
   onEnvironmentChange: ((environmentId: EnvironmentId) => void) | undefined;
   effectiveEnvMode: EnvMode;
   activeWorktreePath: string | null;
@@ -72,6 +79,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   environmentId,
   availableEnvironments,
   showEnvironmentPicker,
+  showEnvironmentIndicator,
   onEnvironmentChange,
   effectiveEnvMode,
   activeWorktreePath,
@@ -80,6 +88,11 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   const activeEnvironment = useMemo(
     () => availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null,
     [availableEnvironments, environmentId],
+  );
+  const remoteOnly = isRemoteOnlyDesktop();
+  const selectableEnvironments = useMemo(
+    () => filterSelectableEnvironments(availableEnvironments ?? [], remoteOnly),
+    [availableEnvironments, remoteOnly],
   );
   const WorkspaceIcon =
     effectiveEnvMode === "worktree"
@@ -94,7 +107,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
       : resolveCurrentWorkspaceLabel(activeWorktreePath);
   const isLocked = envLocked || envModeLocked;
   const EnvironmentIcon = activeEnvironment?.isPrimary ? MonitorIcon : CloudIcon;
-  const icon = showEnvironmentPicker ? (
+  const icon = showEnvironmentIndicator ? (
     // Button's base styles apply `-mx-0.5` to descendant SVGs, which eats 4px
     // out of whatever gap we set. mx-0! cancels that so gap-0.5 reads as 2px.
     <span className="inline-flex shrink-0 items-center gap-0.5">
@@ -108,7 +121,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     <>
       {icon}
       <span className="min-w-0 truncate">
-        {showEnvironmentPicker ? (activeEnvironment?.label ?? "Run on") : workspaceLabel}
+        {showEnvironmentIndicator ? (activeEnvironment?.label ?? "Run on") : workspaceLabel}
       </span>
     </>
   );
@@ -137,9 +150,24 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               <MenuGroupLabel>Run on</MenuGroupLabel>
               <MenuRadioGroup
                 value={environmentId}
-                onValueChange={(value) => onEnvironmentChange(value as EnvironmentId)}
+                onValueChange={(value) => {
+                  if (value !== REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM) {
+                    onEnvironmentChange(value as EnvironmentId);
+                  }
+                }}
               >
-                {availableEnvironments.map((env) => {
+                {remoteOnly ? (
+                  <MenuRadioItem disabled value={REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <MonitorIcon className="size-3" />
+                      <span className="min-w-0 truncate">This device</span>
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      Unavailable in remote-only mode
+                    </span>
+                  </MenuRadioItem>
+                ) : null}
+                {selectableEnvironments.map((env) => {
                   const Icon = env.isPrimary ? MonitorIcon : CloudIcon;
                   return (
                     <MenuRadioItem
@@ -231,15 +259,24 @@ export const BranchToolbar = memo(function BranchToolbar({
     });
   const envModeLocked = envLocked || (serverThread !== null && activeWorktreePath !== null);
 
+  const remoteOnlyDesktop = isRemoteOnlyDesktop();
   const showEnvironmentPicker = Boolean(
-    availableEnvironments && availableEnvironments.length > 1 && onEnvironmentChange,
+    availableEnvironments &&
+    onEnvironmentChange &&
+    (remoteOnlyDesktop || availableEnvironments.length > 1),
   );
+  const activeEnvironmentOption =
+    availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null;
+  const showEnvironmentIndicator = shouldShowEnvironmentIndicator({
+    activeEnvironment: activeEnvironmentOption,
+    canPickEnvironment: showEnvironmentPicker,
+  });
   const isMobile = useIsMobile();
 
   if (!hasActiveThread || !activeProject) return null;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-2.5 pb-3 pt-1 sm:px-3">
+    <div className="chat-composer-context-strip -mt-4 mx-auto flex w-[calc(100%-2.75rem)] max-w-[calc(48rem-2.75rem)] items-center gap-2 px-1 pt-5 pb-1">
       {isMobile ? (
         <MobileRunContextSelector
           envLocked={envLocked}
@@ -247,6 +284,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           environmentId={environmentId}
           availableEnvironments={availableEnvironments}
           showEnvironmentPicker={showEnvironmentPicker}
+          showEnvironmentIndicator={showEnvironmentIndicator}
           onEnvironmentChange={onEnvironmentChange}
           effectiveEnvMode={effectiveEnvMode}
           activeWorktreePath={activeWorktreePath}
@@ -254,13 +292,13 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : (
         <div className="flex min-w-0 shrink-0 items-center gap-1">
-          {showEnvironmentPicker && availableEnvironments && onEnvironmentChange && (
+          {showEnvironmentIndicator && availableEnvironments && (
             <>
               <BranchToolbarEnvironmentSelector
                 envLocked={envLocked}
                 environmentId={environmentId}
                 availableEnvironments={availableEnvironments}
-                onEnvironmentChange={onEnvironmentChange}
+                {...(showEnvironmentPicker && onEnvironmentChange ? { onEnvironmentChange } : {})}
               />
               <Separator orientation="vertical" className="mx-0.5 h-3.5!" />
             </>

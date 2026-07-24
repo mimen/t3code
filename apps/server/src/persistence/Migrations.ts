@@ -45,6 +45,11 @@ import Migration0029 from "./Migrations/029_ProjectionThreadDetailOrderingIndexe
 import Migration0030 from "./Migrations/030_ProjectionThreadShellArchiveIndexes.ts";
 import Migration0031 from "./Migrations/031_AuthAuthorizationScopes.ts";
 import Migration0032 from "./Migrations/032_AuthPairingProofKeyThumbprint.ts";
+import Migration0033 from "./Migrations/033_ProjectionThreadsSettled.ts";
+import Migration0034 from "./Migrations/034_ExternalClaudeSessions.ts";
+import Migration0035 from "./Migrations/035_ExternalClaudeSessionPrefixHash.ts";
+import Migration0036 from "./Migrations/036_ExternalClaudeSessionTimelinePageIndexes.ts";
+import Migration0037 from "./Migrations/037_ExternalClaudeSessionTimelinePageOrderingIndexes.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -89,6 +94,11 @@ export const migrationEntries = [
   [30, "ProjectionThreadShellArchiveIndexes", Migration0030],
   [31, "AuthAuthorizationScopes", Migration0031],
   [32, "AuthPairingProofKeyThumbprint", Migration0032],
+  [33, "ProjectionThreadsSettled", Migration0033],
+  [34, "ExternalClaudeSessions", Migration0034],
+  [35, "ExternalClaudeSessionPrefixHash", Migration0035],
+  [36, "ExternalClaudeSessionTimelinePageIndexes", Migration0036],
+  [37, "ExternalClaudeSessionTimelinePageOrderingIndexes", Migration0037],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

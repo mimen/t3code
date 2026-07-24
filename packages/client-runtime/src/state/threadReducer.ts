@@ -72,6 +72,8 @@ export function applyThreadDetailEvent(
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
           archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
           deletedAt: null,
           messages: [],
           proposedPlans: [],
@@ -98,6 +100,28 @@ export function applyThreadDetailEvent(
       return {
         kind: "updated",
         thread: { ...thread, archivedAt: null, updatedAt: event.payload.updatedAt },
+      };
+
+    case "thread.settled":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          settledOverride: "settled",
+          settledAt: event.payload.settledAt,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
+    case "thread.unsettled":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          settledOverride: event.payload.reason === "user" ? "active" : null,
+          settledAt: null,
+          updatedAt: event.payload.updatedAt,
+        },
       };
 
     // ── Thread metadata ─────────────────────────────────────────────
@@ -269,6 +293,49 @@ export function applyThreadDetailEvent(
           messages,
           checkpoints,
           latestTurn,
+          updatedAt: event.occurredAt,
+        },
+      };
+    }
+
+    // ── External Claude Code history ────────────────────────────────
+    case "thread.external-session-attached":
+    case "thread.external-session-sync-state-updated":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          externalSession: event.payload.externalSession,
+          updatedAt: event.occurredAt,
+        },
+      };
+
+    case "thread.external-history-imported": {
+      const messages = [...thread.messages];
+      const activities = [...thread.activities];
+      for (const item of event.payload.items) {
+        if (item.kind === "message") {
+          const index = messages.findIndex((message) => message.id === item.message.id);
+          if (index >= 0) {
+            messages[index] = item.message;
+          } else {
+            messages.push(item.message);
+          }
+          continue;
+        }
+        const index = activities.findIndex((activity) => activity.id === item.activity.id);
+        if (index >= 0) {
+          activities[index] = item.activity;
+        } else {
+          activities.push(item.activity);
+        }
+      }
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          messages,
+          activities,
           updatedAt: event.occurredAt,
         },
       };

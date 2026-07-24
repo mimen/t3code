@@ -96,6 +96,8 @@ const THREAD_SHELL = {
   createdAt: "2026-06-01T00:00:00.000Z",
   updatedAt: "2026-06-01T00:00:00.000Z",
   archivedAt: null,
+  settledOverride: null,
+  settledAt: null,
   session: null,
   latestUserMessageAt: null,
   hasPendingApprovals: false,
@@ -215,6 +217,17 @@ describe("environment entity projections", () => {
       title: "Current thread",
       branch: "current-branch",
       worktreePath: "/repo/current-worktree",
+      externalSession: {
+        sourceId: "claude-source-1",
+        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        nativeSessionId: "123e4567-e89b-42d3-a456-426614174000",
+        sourcePath: "/repo/.claude/projects/project/session.jsonl",
+        sourceCwd: "/repo",
+        state: "synced" as const,
+        lastSyncedAt: "2026-07-21T00:00:00.000Z",
+        diagnostic: null,
+        updatedAt: "2026-07-21T00:00:00.000Z",
+      },
     };
 
     const merged = mergeEnvironmentThread(detail, shell);
@@ -225,6 +238,7 @@ describe("environment entity projections", () => {
       worktreePath: "/repo/current-worktree",
     });
     expect(merged?.messages).toBe(messages);
+    expect(merged?.externalSession?.state).toBe("synced");
   });
 
   it("preserves untouched project and thread identities across unrelated shell updates", () => {

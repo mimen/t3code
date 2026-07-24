@@ -1,7 +1,11 @@
 import {
   CommandId,
   ORCHESTRATION_WS_METHODS,
+  type ClaudeSessionCatalogueQuery,
+  type ClaudeSessionPreviewInput,
+  type ClaudeSessionSyncInput,
   type ClientOrchestrationCommand,
+  type ThreadTimelinePageInput,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -35,6 +39,8 @@ export type CreateThreadInput = CommandInput<"thread.create">;
 export type DeleteThreadInput = CommandInput<"thread.delete">;
 export type ArchiveThreadInput = CommandInput<"thread.archive">;
 export type UnarchiveThreadInput = CommandInput<"thread.unarchive">;
+export type SettleThreadInput = CommandInput<"thread.settle">;
+export type UnsettleThreadInput = CommandInput<"thread.unsettle">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type SetThreadRuntimeModeInput = CommandInput<"thread.runtime-mode.set">;
 export type SetThreadInteractionModeInput = CommandInput<"thread.interaction-mode.set">;
@@ -44,12 +50,44 @@ export type RespondToThreadApprovalInput = CommandInput<"thread.approval.respond
 export type RespondToThreadUserInputInput = CommandInput<"thread.user-input.respond">;
 export type RevertThreadCheckpointInput = CommandInput<"thread.checkpoint.revert">;
 export type StopThreadSessionInput = CommandInput<"thread.session.stop">;
+export type ListClaudeSessionsInput = ClaudeSessionCatalogueQuery;
+export type PreviewClaudeSessionInput = ClaudeSessionPreviewInput;
+export type SyncClaudeSessionInput = ClaudeSessionSyncInput;
+export type GetThreadTimelinePageInput = ThreadTimelinePageInput;
 
 type DispatchTag = typeof ORCHESTRATION_WS_METHODS.dispatchCommand;
 type CommandEffect = Effect.Effect<
   EnvironmentRpcSuccess<DispatchTag>,
   EnvironmentRpcFailure<DispatchTag> | EnvironmentRpcUnavailableError,
   Crypto.Crypto | EnvironmentSupervisor
+>;
+
+type ListClaudeSessionsTag = typeof ORCHESTRATION_WS_METHODS.listClaudeSessions;
+type ListClaudeSessionsEffect = Effect.Effect<
+  EnvironmentRpcSuccess<ListClaudeSessionsTag>,
+  EnvironmentRpcFailure<ListClaudeSessionsTag> | EnvironmentRpcUnavailableError,
+  EnvironmentSupervisor
+>;
+
+type PreviewClaudeSessionTag = typeof ORCHESTRATION_WS_METHODS.previewClaudeSession;
+type PreviewClaudeSessionEffect = Effect.Effect<
+  EnvironmentRpcSuccess<PreviewClaudeSessionTag>,
+  EnvironmentRpcFailure<PreviewClaudeSessionTag> | EnvironmentRpcUnavailableError,
+  EnvironmentSupervisor
+>;
+
+type SyncClaudeSessionTag = typeof ORCHESTRATION_WS_METHODS.syncClaudeSession;
+type SyncClaudeSessionEffect = Effect.Effect<
+  EnvironmentRpcSuccess<SyncClaudeSessionTag>,
+  EnvironmentRpcFailure<SyncClaudeSessionTag> | EnvironmentRpcUnavailableError,
+  EnvironmentSupervisor
+>;
+
+type GetThreadTimelinePageTag = typeof ORCHESTRATION_WS_METHODS.getThreadTimelinePage;
+type GetThreadTimelinePageEffect = Effect.Effect<
+  EnvironmentRpcSuccess<GetThreadTimelinePageTag>,
+  EnvironmentRpcFailure<GetThreadTimelinePageTag> | EnvironmentRpcUnavailableError,
+  EnvironmentSupervisor
 >;
 
 function commandId(input: { readonly commandId?: CommandId }) {
@@ -78,6 +116,32 @@ function timestampedCommandMetadata(input: {
 function dispatch(command: ClientOrchestrationCommand) {
   return request(ORCHESTRATION_WS_METHODS.dispatchCommand, command);
 }
+
+export const listClaudeSessions: (input: ListClaudeSessionsInput) => ListClaudeSessionsEffect =
+  Effect.fn("EnvironmentCommands.listClaudeSessions")(function* (input) {
+    return yield* request(ORCHESTRATION_WS_METHODS.listClaudeSessions, input);
+  });
+
+export const previewClaudeSession: (
+  input: PreviewClaudeSessionInput,
+) => PreviewClaudeSessionEffect = Effect.fn("EnvironmentCommands.previewClaudeSession")(
+  function* (input) {
+    return yield* request(ORCHESTRATION_WS_METHODS.previewClaudeSession, input);
+  },
+);
+
+export const syncClaudeSession: (input: SyncClaudeSessionInput) => SyncClaudeSessionEffect =
+  Effect.fn("EnvironmentCommands.syncClaudeSession")(function* (input) {
+    return yield* request(ORCHESTRATION_WS_METHODS.syncClaudeSession, input);
+  });
+
+export const getThreadTimelinePage: (
+  input: GetThreadTimelinePageInput,
+) => GetThreadTimelinePageEffect = Effect.fn("EnvironmentCommands.getThreadTimelinePage")(
+  function* (input) {
+    return yield* request(ORCHESTRATION_WS_METHODS.getThreadTimelinePage, input);
+  },
+);
 
 export const createProject: (input: CreateProjectInput) => CommandEffect = Effect.fn(
   "EnvironmentCommands.createProject",
@@ -149,6 +213,26 @@ export const unarchiveThread: (input: UnarchiveThreadInput) => CommandEffect = E
   return yield* dispatch({
     ...input,
     type: "thread.unarchive",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const settleThread: (input: SettleThreadInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.settleThread",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.settle",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const unsettleThread: (input: UnsettleThreadInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.unsettleThread",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.unsettle",
     commandId: yield* commandId(input),
   });
 });

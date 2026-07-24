@@ -1,5 +1,6 @@
 import {
   CheckpointRef,
+  CommandId,
   EventId,
   MessageId,
   ProjectId,
@@ -17,6 +18,7 @@ import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
+import { decideOrchestrationCommand } from "../decider.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -308,6 +310,8 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           createdAt: "2026-02-24T00:00:02.000Z",
           updatedAt: "2026-02-24T00:00:03.000Z",
           archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
           deletedAt: null,
           messages: [
             {
@@ -316,6 +320,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               text: "hello from projection",
               turnId: asTurnId("turn-1"),
               streaming: false,
+              provenance: { origin: "t3" },
               createdAt: "2026-02-24T00:00:04.000Z",
               updatedAt: "2026-02-24T00:00:05.000Z",
             },
@@ -339,6 +344,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               summary: "provider started",
               payload: { stage: "start" },
               turnId: asTurnId("turn-1"),
+              provenance: { origin: "t3" },
               createdAt: "2026-02-24T00:00:06.000Z",
             },
           ],
@@ -418,6 +424,8 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           createdAt: "2026-02-24T00:00:02.000Z",
           updatedAt: "2026-02-24T00:00:03.000Z",
           archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
           session: {
             threadId: ThreadId.make("thread-1"),
             status: "running",
@@ -438,6 +446,128 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
       assert.equal(threadDetail._tag, "Some");
       if (threadDetail._tag === "Some") {
         assert.deepEqual(threadDetail.value, snapshot.threads[0]);
+      }
+
+      yield* sql`
+        INSERT INTO external_session_sources (
+          source_id,
+          provider_instance_id,
+          local_source_host,
+          native_session_id,
+          source_path,
+          source_cwd,
+          thread_id,
+          sync_state,
+          last_synced_at,
+          diagnostic,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'source-1',
+          'claudeAgent',
+          'test-host',
+          '123e4567-e89b-42d3-a456-426614174000',
+          '/tmp/source.jsonl',
+          '/tmp/project-1',
+          'thread-1',
+          'synced',
+          '2026-02-24T00:00:09.000Z',
+          NULL,
+          '2026-02-24T00:00:09.000Z',
+          '2026-02-24T00:00:09.000Z'
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_external_sessions (
+          thread_id,
+          source_id,
+          provider_instance_id,
+          native_session_id,
+          source_path,
+          source_cwd,
+          sync_state,
+          last_synced_at,
+          diagnostic,
+          updated_at
+        )
+        VALUES (
+          'thread-1',
+          'source-1',
+          'claudeAgent',
+          '123e4567-e89b-42d3-a456-426614174000',
+          '/tmp/source.jsonl',
+          '/tmp/project-1',
+          'synced',
+          '2026-02-24T00:00:09.000Z',
+          NULL,
+          '2026-02-24T00:00:09.000Z'
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_messages (
+          message_id,
+          thread_id,
+          turn_id,
+          role,
+          text,
+          is_streaming,
+          provenance_json,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'imported-message',
+          'thread-1',
+          NULL,
+          'assistant',
+          'imported history',
+          0,
+          '{"origin":"claude-code-jsonl","sourceId":"source-1","sourceItemKey":"item-1"}',
+          '2026-02-24T00:00:09.000Z',
+          '2026-02-24T00:00:09.000Z'
+        )
+      `;
+
+      const commandReadModel = yield* snapshotQuery.getCommandReadModel();
+      assert.deepEqual(
+        commandReadModel.threads[0]?.messages.map((message) => message.id),
+        [asMessageId("message-1")],
+      );
+      const importEvent = yield* decideOrchestrationCommand({
+        readModel: commandReadModel,
+        command: {
+          type: "thread.external-history.import",
+          commandId: CommandId.make("restart-dedupe-command"),
+          threadId: ThreadId.make("thread-1"),
+          sourceId: "source-1",
+          items: [],
+          deduplicatedMessages: [
+            {
+              sourceItemKey: "continuation:message:0",
+              contentHash: "continuation-hash",
+              messageId: asMessageId("message-1"),
+            },
+          ],
+          expectedCheckpointRevision: 0,
+          checkpoint: {
+            sourceId: "source-1",
+            fileIdentity: "1:1",
+            committedPrefixHash: "prefix-hash",
+            generation: 0,
+            committedByteOffset: 1,
+            committedLineOrdinal: 1,
+            observedSize: 1,
+            observedMtimeMs: 1,
+            parserVersion: "claude-jsonl-v1",
+            revision: 1,
+          },
+          createdAt: "2026-02-24T00:00:10.000Z",
+        },
+      });
+      assert.equal("type" in importEvent, true);
+      if ("type" in importEvent) {
+        assert.equal(importEvent.type, "thread.external-history-imported");
       }
     }),
   );
@@ -559,6 +689,115 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
         [ThreadId.make("thread-archived")],
       );
       assert.equal(archivedShellSnapshot.threads[0]?.archivedAt, "2026-04-06T00:00:06.000Z");
+    }),
+  );
+
+  it.effect("keeps settled threads in the shell snapshot with non-null settlement fields", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_state`;
+
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-settled-test',
+          'Settled Test',
+          '/tmp/settled-test',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          '[]',
+          '2026-04-06T00:00:00.000Z',
+          '2026-04-06T00:00:01.000Z',
+          NULL
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id,
+          project_id,
+          title,
+          model_selection_json,
+          runtime_mode,
+          interaction_mode,
+          branch,
+          worktree_path,
+          latest_turn_id,
+          latest_user_message_at,
+          pending_approval_count,
+          pending_user_input_count,
+          has_actionable_proposed_plan,
+          created_at,
+          updated_at,
+          archived_at,
+          settled_override,
+          settled_at,
+          deleted_at
+        )
+        VALUES (
+          'thread-settled',
+          'project-settled-test',
+          'Settled Thread',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          'full-access',
+          'default',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          0,
+          0,
+          '2026-04-06T00:00:02.000Z',
+          '2026-04-06T00:00:05.000Z',
+          NULL,
+          'settled',
+          '2026-04-06T00:00:04.000Z',
+          NULL
+        )
+      `;
+
+      yield* sql`
+        INSERT INTO projection_state (projector, last_applied_sequence, updated_at)
+        VALUES
+          (${ORCHESTRATION_PROJECTOR_NAMES.projects}, 4, '2026-04-06T00:00:07.000Z'),
+          (${ORCHESTRATION_PROJECTOR_NAMES.threads}, 4, '2026-04-06T00:00:07.000Z'),
+          (${ORCHESTRATION_PROJECTOR_NAMES.threadMessages}, 4, '2026-04-06T00:00:07.000Z'),
+          (${ORCHESTRATION_PROJECTOR_NAMES.threadProposedPlans}, 4, '2026-04-06T00:00:07.000Z'),
+          (${ORCHESTRATION_PROJECTOR_NAMES.threadActivities}, 4, '2026-04-06T00:00:07.000Z'),
+          (${ORCHESTRATION_PROJECTOR_NAMES.threadSessions}, 4, '2026-04-06T00:00:07.000Z'),
+          (${ORCHESTRATION_PROJECTOR_NAMES.checkpoints}, 4, '2026-04-06T00:00:07.000Z')
+      `;
+
+      // Settled ≠ archived: the thread must appear in the LIVE shell
+      // snapshot, carrying its settlement fields through the row aliases.
+      const shellSnapshot = yield* snapshotQuery.getShellSnapshot();
+      assert.deepEqual(
+        shellSnapshot.threads.map((thread) => thread.id),
+        [ThreadId.make("thread-settled")],
+      );
+      assert.equal(shellSnapshot.threads[0]?.settledOverride, "settled");
+      assert.equal(shellSnapshot.threads[0]?.settledAt, "2026-04-06T00:00:04.000Z");
+
+      // And the full command read model carries them too.
+      const readModel = yield* snapshotQuery.getCommandReadModel();
+      const thread = readModel.threads.find(
+        (candidate) => candidate.id === ThreadId.make("thread-settled"),
+      );
+      assert.equal(thread?.settledOverride, "settled");
+      assert.equal(thread?.settledAt, "2026-04-06T00:00:04.000Z");
     }),
   );
 
@@ -984,6 +1223,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           summary: "unsequenced first",
           payload: { source: "unsequenced" },
           turnId: null,
+          provenance: { origin: "t3" },
           createdAt: "2026-04-01T00:00:06.000Z",
         },
         {
@@ -994,6 +1234,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           payload: { source: "sequence-1" },
           turnId: null,
           sequence: 1,
+          provenance: { origin: "t3" },
           createdAt: "2026-04-01T00:00:05.000Z",
         },
         {
@@ -1004,6 +1245,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           payload: { source: "sequence-2" },
           turnId: null,
           sequence: 2,
+          provenance: { origin: "t3" },
           createdAt: "2026-04-01T00:00:04.000Z",
         },
       ]);
@@ -1302,6 +1544,242 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
       const fullSnapshot = yield* snapshotQuery.getSnapshot();
       assert.equal(fullSnapshot.threads[0]?.latestTurn?.turnId, asTurnId("turn-running"));
       assert.equal(fullSnapshot.threads[0]?.latestTurn?.state, "running");
+    }),
+  );
+
+  it.effect("pages a mixed timeline with SQL keyset cursors", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_thread_messages`;
+      yield* sql`DELETE FROM projection_thread_activities`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_projects`;
+
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-timeline-page',
+          'Timeline page project',
+          '/tmp/timeline-page',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          '[]',
+          '2026-06-01T00:00:00.000Z',
+          '2026-06-01T00:00:00.000Z',
+          NULL
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id,
+          project_id,
+          title,
+          model_selection_json,
+          runtime_mode,
+          interaction_mode,
+          branch,
+          worktree_path,
+          latest_turn_id,
+          latest_user_message_at,
+          pending_approval_count,
+          pending_user_input_count,
+          has_actionable_proposed_plan,
+          created_at,
+          updated_at,
+          archived_at,
+          deleted_at
+        )
+        VALUES (
+          'thread-timeline-page',
+          'project-timeline-page',
+          'Timeline page thread',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          'full-access',
+          'default',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          0,
+          0,
+          '2026-06-01T00:00:00.000Z',
+          '2026-06-01T00:00:00.000Z',
+          NULL,
+          NULL
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_messages (
+          message_id,
+          thread_id,
+          turn_id,
+          role,
+          text,
+          attachments_json,
+          is_streaming,
+          provenance_json,
+          timeline_order_key,
+          created_at,
+          updated_at
+        )
+        VALUES
+          (
+            'message-legacy',
+            'thread-timeline-page',
+            NULL,
+            'user',
+            'Legacy message',
+            NULL,
+            0,
+            NULL,
+            NULL,
+            '2026-06-01T00:00:01.000Z',
+            '2026-06-01T00:00:01.000Z'
+          ),
+          (
+            'message-imported',
+            'thread-timeline-page',
+            NULL,
+            'assistant',
+            'Imported message',
+            NULL,
+            0,
+            NULL,
+            '2026-06-01T00:00:02.000Z:000000000002:000001',
+            '2026-06-01T00:00:02.000Z',
+            '2026-06-01T00:00:02.000Z'
+          ),
+          (
+            'message-newest',
+            'thread-timeline-page',
+            NULL,
+            'assistant',
+            'Newest message',
+            NULL,
+            0,
+            NULL,
+            NULL,
+            '2026-06-01T00:00:03.000Z',
+            '2026-06-01T00:00:03.000Z'
+          )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id,
+          thread_id,
+          turn_id,
+          tone,
+          kind,
+          summary,
+          payload_json,
+          sequence,
+          provenance_json,
+          timeline_order_key,
+          created_at
+        )
+        VALUES
+          (
+            'activity-legacy',
+            'thread-timeline-page',
+            NULL,
+            'tool',
+            'tool-call',
+            'Legacy activity',
+            '{}',
+            NULL,
+            NULL,
+            NULL,
+            '2026-06-01T00:00:01.000Z'
+          ),
+          (
+            'activity-imported',
+            'thread-timeline-page',
+            NULL,
+            'tool',
+            'tool-result',
+            'Imported activity',
+            '{"ok":true}',
+            NULL,
+            NULL,
+            '2026-06-01T00:00:02.000Z:000000000002:000000',
+            '2026-06-01T00:00:02.000Z'
+          )
+      `;
+
+      const newestPage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        limit: 2,
+      });
+      assert.equal(newestPage._tag, "Some");
+      if (newestPage._tag !== "Some") {
+        return;
+      }
+      assert.deepEqual(
+        newestPage.value.items.map((item) =>
+          item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+        ),
+        ["message:message-imported", "message:message-newest"],
+      );
+      assert.equal(newestPage.value.items[0]?.kind, "message");
+      if (newestPage.value.items[0]?.kind === "message") {
+        assert.deepEqual(newestPage.value.items[0].message.provenance, { origin: "t3" });
+      }
+      assert.notEqual(newestPage.value.nextCursor, null);
+
+      const middlePage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        beforeCursor: newestPage.value.nextCursor ?? undefined,
+        limit: 2,
+      });
+      assert.equal(middlePage._tag, "Some");
+      if (middlePage._tag !== "Some") {
+        return;
+      }
+      assert.deepEqual(
+        middlePage.value.items.map((item) =>
+          item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+        ),
+        ["message:message-legacy", "activity:activity-imported"],
+      );
+      assert.notEqual(middlePage.value.nextCursor, null);
+
+      const oldestPage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        beforeCursor: middlePage.value.nextCursor ?? undefined,
+        limit: 2,
+      });
+      assert.equal(oldestPage._tag, "Some");
+      if (oldestPage._tag !== "Some") {
+        return;
+      }
+      assert.deepEqual(
+        oldestPage.value.items.map((item) =>
+          item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+        ),
+        ["activity:activity-legacy"],
+      );
+      assert.equal(oldestPage.value.nextCursor, null);
+
+      const malformedCursorPage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        beforeCursor: "not-a-timeline-cursor",
+        limit: 2,
+      });
+      assert.equal(malformedCursorPage._tag, "Some");
+      if (malformedCursorPage._tag === "Some") {
+        assert.deepEqual(malformedCursorPage.value, { items: [], nextCursor: null });
+      }
     }),
   );
 

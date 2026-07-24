@@ -12,6 +12,13 @@ export interface EnvironmentOption {
   isPrimary: boolean;
 }
 
+export function filterSelectableEnvironments(
+  environments: readonly EnvironmentOption[],
+  remoteOnly: boolean,
+): readonly EnvironmentOption[] {
+  return remoteOnly ? environments.filter((environment) => !environment.isPrimary) : environments;
+}
+
 export const EnvMode = Schema.Literals(["local", "worktree"]);
 export type EnvMode = typeof EnvMode.Type;
 
@@ -40,6 +47,17 @@ export function resolveEnvironmentOptionLabel(input: {
   }
 
   return runtimeLabel ?? savedLabel ?? input.environmentId;
+}
+
+// A remote (non-primary) environment is always surfaced, even when it is the
+// only environment available: with a single connected machine there is nothing
+// to pick, but the user still needs to see where the project runs.
+export function shouldShowEnvironmentIndicator(input: {
+  activeEnvironment: Pick<EnvironmentOption, "isPrimary"> | null;
+  canPickEnvironment: boolean;
+}): boolean {
+  if (input.canPickEnvironment) return true;
+  return input.activeEnvironment !== null && !input.activeEnvironment.isPrimary;
 }
 
 export function resolveEnvModeLabel(mode: EnvMode): string {
@@ -95,6 +113,22 @@ export function resolveBranchToolbarValue(input: {
     return activeThreadBranch ?? currentGitBranch;
   }
   return currentGitBranch ?? activeThreadBranch;
+}
+
+export function resolveLocalCheckoutBranchMismatch(input: {
+  effectiveEnvMode: EnvMode;
+  activeWorktreePath: string | null;
+  activeThreadBranch: string | null;
+  currentGitBranch: string | null;
+}): { threadBranch: string; currentBranch: string } | null {
+  const { effectiveEnvMode, activeWorktreePath, activeThreadBranch, currentGitBranch } = input;
+  if (effectiveEnvMode !== "local" || activeWorktreePath !== null) {
+    return null;
+  }
+  if (!activeThreadBranch || !currentGitBranch || activeThreadBranch === currentGitBranch) {
+    return null;
+  }
+  return { threadBranch: activeThreadBranch, currentBranch: currentGitBranch };
 }
 
 export function resolveBranchSelectionTarget(input: {

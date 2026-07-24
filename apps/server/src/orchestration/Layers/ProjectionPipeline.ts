@@ -34,6 +34,7 @@ import {
   ProjectionTurnRepository,
 } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
+import { ExternalClaudeSessionRepository } from "../../persistence/Services/ExternalClaudeSessions.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "../../persistence/Layers/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/ProjectionProjects.ts";
 import { ProjectionStateRepositoryLive } from "../../persistence/Layers/ProjectionState.ts";
@@ -43,6 +44,7 @@ import { ProjectionThreadProposedPlanRepositoryLive } from "../../persistence/La
 import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/ProjectionThreadSessions.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
+import { ExternalClaudeSessionRepositoryLive } from "../../persistence/Layers/ExternalClaudeSessions.ts";
 import { ServerConfig } from "../../config.ts";
 import {
   OrchestrationProjectionPipeline,
@@ -65,6 +67,7 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
   threadTurns: "projection.thread-turns",
   checkpoints: "projection.checkpoints",
   pendingApprovals: "projection.pending-approvals",
+  externalClaudeSessions: "projection.external-claude-sessions",
 } as const;
 
 type ProjectorName =
@@ -229,6 +232,10 @@ function retainProjectionMessagesAfterRevert(
   }
 
   for (const message of messages) {
+    if (message.provenance?.origin === "claude-code-jsonl") {
+      retainedMessageIds.add(message.messageId);
+      continue;
+    }
     if (message.role === "system") {
       retainedMessageIds.add(message.messageId);
       continue;
@@ -239,7 +246,10 @@ function retainProjectionMessagesAfterRevert(
   }
 
   const retainedUserCount = messages.filter(
-    (message) => message.role === "user" && retainedMessageIds.has(message.messageId),
+    (message) =>
+      message.role === "user" &&
+      message.provenance?.origin !== "claude-code-jsonl" &&
+      retainedMessageIds.has(message.messageId),
   ).length;
   const missingUserCount = Math.max(0, turnCount - retainedUserCount);
   if (missingUserCount > 0) {
@@ -262,7 +272,10 @@ function retainProjectionMessagesAfterRevert(
   }
 
   const retainedAssistantCount = messages.filter(
-    (message) => message.role === "assistant" && retainedMessageIds.has(message.messageId),
+    (message) =>
+      message.role === "assistant" &&
+      message.provenance?.origin !== "claude-code-jsonl" &&
+      retainedMessageIds.has(message.messageId),
   ).length;
   const missingAssistantCount = Math.max(0, turnCount - retainedAssistantCount);
   if (missingAssistantCount > 0) {
@@ -474,6 +487,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const projectionStateRepository = yield* ProjectionStateRepository;
     const projectionProjectRepository = yield* ProjectionProjectRepository;
     const projectionThreadRepository = yield* ProjectionThreadRepository;
+    const externalClaudeSessionRepository = yield* ExternalClaudeSessionRepository;
     const projectionThreadMessageRepository = yield* ProjectionThreadMessageRepository;
     const projectionThreadProposedPlanRepository = yield* ProjectionThreadProposedPlanRepository;
     const projectionThreadActivityRepository = yield* ProjectionThreadActivityRepository;
@@ -565,6 +579,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       for (const message of messages) {
         if (
           message.role === "user" &&
+          message.provenance?.origin !== "claude-code-jsonl" &&
           (latestUserMessageAt === null || message.createdAt > latestUserMessageAt)
         ) {
           latestUserMessageAt = message.createdAt;
@@ -589,6 +604,158 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       });
     });
 
+    const applyExternalClaudeSessionProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyExternalClaudeSessionProjection",
+    )(function* (event, _attachmentSideEffects) {
+      switch (event.type) {
+        case "thread.external-session-attached": {
+          const existingSource = yield* externalClaudeSessionRepository
+            .getSourceByIdentity({
+              providerInstanceId: event.payload.externalSession.providerInstanceId,
+              localSourceHost: event.payload.localSourceHost,
+              nativeSessionId: event.payload.externalSession.nativeSessionId,
+            })
+            .pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.externalSession.findSource"),
+              ),
+            );
+          if (
+            Option.isSome(existingSource) &&
+            existingSource.value.sourceId !== event.payload.externalSession.sourceId
+          ) {
+            // A historical attachment can be replayed after a deleted source
+            // has been reattached under a new source id. The newer persisted
+            // identity remains authoritative; replaying the retired event must
+            // not overwrite or reject it.
+            return;
+          }
+          yield* externalClaudeSessionRepository
+            .createSource({
+              sourceId: event.payload.externalSession.sourceId,
+              providerInstanceId: event.payload.externalSession.providerInstanceId,
+              localSourceHost: event.payload.localSourceHost,
+              nativeSessionId: event.payload.externalSession.nativeSessionId,
+              sourcePath: event.payload.externalSession.sourcePath,
+              sourceCwd: event.payload.externalSession.sourceCwd,
+              threadId: event.payload.threadId,
+              state: event.payload.externalSession.state,
+              lastSyncedAt: event.payload.externalSession.lastSyncedAt,
+              diagnostic: event.payload.externalSession.diagnostic,
+              createdAt: event.occurredAt,
+              updatedAt: event.payload.externalSession.updatedAt,
+            })
+            .pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.externalSession.createSource"),
+              ),
+            );
+          yield* externalClaudeSessionRepository
+            .createCheckpoint(event.payload.checkpoint)
+            .pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.externalSession.createCheckpoint"),
+              ),
+            );
+          yield* externalClaudeSessionRepository
+            .upsertThreadSummary(event.payload.externalSession, event.payload.threadId)
+            .pipe(
+              Effect.mapError(toPersistenceSqlError("ProjectionPipeline.externalSession.attach")),
+            );
+          return;
+        }
+
+        case "thread.external-session-sync-state-updated":
+          yield* externalClaudeSessionRepository
+            .updateSourceState({
+              sourceId: event.payload.externalSession.sourceId,
+              state: event.payload.externalSession.state,
+              lastSyncedAt: event.payload.externalSession.lastSyncedAt,
+              diagnostic: event.payload.externalSession.diagnostic,
+              updatedAt: event.payload.externalSession.updatedAt,
+            })
+            .pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.externalSession.updateState"),
+              ),
+            );
+          yield* externalClaudeSessionRepository
+            .upsertThreadSummary(event.payload.externalSession, event.payload.threadId)
+            .pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.externalSession.updateSummary"),
+              ),
+            );
+          return;
+
+        case "thread.deleted":
+          yield* externalClaudeSessionRepository
+            .deleteSourceByThreadId(event.payload.threadId)
+            .pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.externalSession.deleteSource"),
+              ),
+            );
+          return;
+
+        case "thread.external-history-imported":
+          yield* Effect.forEach(
+            event.payload.items,
+            (item) =>
+              externalClaudeSessionRepository
+                .ensureSourceItem({
+                  sourceId: event.payload.sourceId,
+                  sourceItemKey: item.sourceItemKey,
+                  targetKind: item.kind,
+                  targetId: item.kind === "message" ? item.message.id : item.activity.id,
+                  contentHash: item.contentHash,
+                  createdAt: event.occurredAt,
+                })
+                .pipe(
+                  Effect.mapError(
+                    toPersistenceSqlError("ProjectionPipeline.externalSession.ensureItem"),
+                  ),
+                ),
+            { concurrency: 1 },
+          );
+          yield* Effect.forEach(
+            event.payload.deduplicatedMessages ?? [],
+            (item) =>
+              externalClaudeSessionRepository
+                .ensureSourceItem({
+                  sourceId: event.payload.sourceId,
+                  sourceItemKey: item.sourceItemKey,
+                  targetKind: "message",
+                  targetId: item.messageId,
+                  contentHash: item.contentHash,
+                  createdAt: event.occurredAt,
+                })
+                .pipe(
+                  Effect.mapError(
+                    toPersistenceSqlError(
+                      "ProjectionPipeline.externalSession.ensureDeduplicatedItem",
+                    ),
+                  ),
+                ),
+            { concurrency: 1 },
+          );
+          yield* externalClaudeSessionRepository
+            .advanceCheckpoint({
+              expectedRevision: event.payload.expectedCheckpointRevision,
+              checkpoint: event.payload.checkpoint,
+            })
+            .pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.externalSession.advanceCheckpoint"),
+              ),
+            );
+          return;
+
+        default:
+          return;
+      }
+    });
+
     const applyThreadsProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyThreadsProjection",
     )(function* (event, attachmentSideEffects) {
@@ -607,6 +774,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             createdAt: event.payload.createdAt,
             updatedAt: event.payload.updatedAt,
             archivedAt: null,
+            settledOverride: null,
+            settledAt: null,
             latestUserMessageAt: null,
             pendingApprovalCount: 0,
             pendingUserInputCount: 0,
@@ -640,6 +809,38 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
             archivedAt: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.settled": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            settledOverride: "settled",
+            settledAt: event.payload.settledAt,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.unsettled": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            settledOverride: event.payload.reason === "user" ? "active" : null,
+            settledAt: null,
             updatedAt: event.payload.updatedAt,
           });
           return;
@@ -716,6 +917,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         case "thread.message-sent":
         case "thread.proposed-plan-upserted":
         case "thread.activity-appended":
+        case "thread.external-session-attached":
+        case "thread.external-session-sync-state-updated":
+        case "thread.external-history-imported":
         case "thread.approval-response-requested":
         case "thread.user-input-response-requested": {
           const existingRow = yield* projectionThreadRepository.getById({
@@ -848,6 +1052,33 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
         }
 
+        case "thread.external-history-imported":
+          yield* Effect.forEach(
+            event.payload.items,
+            (item) =>
+              item.kind === "message"
+                ? projectionThreadMessageRepository.upsert({
+                    messageId: item.message.id,
+                    threadId: event.payload.threadId,
+                    turnId: null,
+                    role: item.message.role,
+                    text: item.message.text,
+                    ...(item.message.attachments !== undefined
+                      ? { attachments: item.message.attachments }
+                      : {}),
+                    isStreaming: false,
+                    provenance: item.message.provenance,
+                    ...(item.message.timelineOrderKey !== undefined
+                      ? { timelineOrderKey: item.message.timelineOrderKey }
+                      : {}),
+                    createdAt: item.message.createdAt,
+                    updatedAt: item.message.updatedAt,
+                  })
+                : Effect.void,
+            { concurrency: 1 },
+          );
+          return;
+
         case "thread.reverted": {
           const existingRows = yield* projectionThreadMessageRepository.listByThreadId({
             threadId: event.payload.threadId,
@@ -957,6 +1188,33 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
           return;
 
+        case "thread.external-history-imported":
+          yield* Effect.forEach(
+            event.payload.items,
+            (item) =>
+              item.kind === "activity"
+                ? projectionThreadActivityRepository.upsert({
+                    activityId: item.activity.id,
+                    threadId: event.payload.threadId,
+                    turnId: null,
+                    tone: item.activity.tone,
+                    kind: item.activity.kind,
+                    summary: item.activity.summary,
+                    payload: item.activity.payload,
+                    ...(item.activity.sequence !== undefined
+                      ? { sequence: item.activity.sequence }
+                      : {}),
+                    provenance: item.activity.provenance,
+                    ...(item.activity.timelineOrderKey !== undefined
+                      ? { timelineOrderKey: item.activity.timelineOrderKey }
+                      : {}),
+                    createdAt: item.activity.createdAt,
+                  })
+                : Effect.void,
+            { concurrency: 1 },
+          );
+          return;
+
         case "thread.reverted": {
           const existingRows = yield* projectionThreadActivityRepository.listByThreadId({
             threadId: event.payload.threadId,
@@ -1025,6 +1283,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         case "thread.session-set": {
           const turnId = event.payload.session.activeTurnId;
           if (turnId === null || event.payload.session.status !== "running") {
+            if (
+              event.payload.session.status === "error" ||
+              event.payload.session.status === "stopped" ||
+              event.payload.session.status === "interrupted"
+            ) {
+              yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+                threadId: event.payload.threadId,
+              });
+            }
             // Leaving the "running" session status is the turn-end signal:
             // settle still-running turns so their duration reflects the whole
             // turn rather than the last assistant message.
@@ -1465,6 +1732,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         apply: applyProjectsProjection,
       },
       {
+        name: ORCHESTRATION_PROJECTOR_NAMES.externalClaudeSessions,
+        apply: applyExternalClaudeSessionProjection,
+      },
+      {
         name: ORCHESTRATION_PROJECTOR_NAMES.threadMessages,
         apply: applyThreadMessagesProjection,
       },
@@ -1592,6 +1863,7 @@ export const OrchestrationProjectionPipelineLive = Layer.effect(
 ).pipe(
   Layer.provideMerge(ProjectionProjectRepositoryLive),
   Layer.provideMerge(ProjectionThreadRepositoryLive),
+  Layer.provideMerge(ExternalClaudeSessionRepositoryLive),
   Layer.provideMerge(ProjectionThreadMessageRepositoryLive),
   Layer.provideMerge(ProjectionThreadProposedPlanRepositoryLive),
   Layer.provideMerge(ProjectionThreadActivityRepositoryLive),

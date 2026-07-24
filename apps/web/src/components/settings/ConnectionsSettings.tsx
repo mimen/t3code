@@ -24,6 +24,7 @@ import {
   type AuthPairingLink,
   type AdvertisedEndpoint,
   type DesktopDiscoveredSshHost,
+  type DesktopExecutionMode,
   type DesktopSshEnvironmentTarget,
   type DesktopServerExposureState,
   type DesktopWslState,
@@ -37,6 +38,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
+import { isLocalBackendAvailable } from "../../desktopRuntimeCapabilities";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
 import { formatElapsedDurationLabel, formatExpiresInLabel } from "../../timestampFormat";
@@ -106,7 +108,10 @@ import {
 } from "~/environments/primary";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { useUiStateStore } from "~/uiStateStore";
-import { resolveServerConfigVersionMismatch } from "~/versionSkew";
+import {
+  resolveServerConfigVersionMismatch,
+  resolveServerSelfUpdateCapability,
+} from "~/versionSkew";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { useCloudLinkController } from "~/cloud/useCloudLinkController";
 import { authEnvironment } from "~/state/auth";
@@ -129,6 +134,7 @@ import {
 } from "~/state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ConnectionStatusDot } from "../ConnectionStatusDot";
+import { ServerUpdateAction } from "../ServerUpdateAction";
 import { CloudEnvironmentConnectRows } from "../cloud/CloudEnvironmentConnectList";
 import { ITEM_ROW_CLASSNAME, ITEM_ROW_INNER_CLASSNAME } from "./itemRows";
 
@@ -369,7 +375,7 @@ function formatDesktopSshConnectionError(error: unknown): string {
   return withoutTaggedErrorPrefix.trim() || fallback;
 }
 
-const ENDPOINT_ROW_CLASSNAME = "border-t border-border/60 px-4 py-2.5 first:border-t-0 sm:px-5";
+const ENDPOINT_ROW_CLASSNAME = "rounded-xl px-3 py-2.5 sm:px-4";
 
 type AccessSectionPresentation = "current" | "endpoint-rail";
 
@@ -379,10 +385,7 @@ function accessRowClassName(_presentation: AccessSectionPresentation) {
 
 function endpointRowClassName(presentation: AccessSectionPresentation, isAvailable: boolean) {
   if (presentation === "endpoint-rail") {
-    return cn(
-      "relative border-t border-border/60 px-4 py-3 first:border-t-0 sm:px-5",
-      !isAvailable && "bg-muted/20",
-    );
+    return cn("relative rounded-xl px-3 py-3 sm:px-4", !isAvailable && "bg-muted/15");
   }
 
   return cn(ENDPOINT_ROW_CLASSNAME, !isAvailable && "bg-muted/24");
@@ -1425,11 +1428,19 @@ function SavedBackendListRow({
             <p className="text-xs text-muted-foreground">{metadataBits.join(" · ")}</p>
           ) : null}
           {versionMismatch ? (
-            <p className="flex items-center gap-1 text-warning text-xs">
-              <TriangleAlertIcon className="size-3.5 shrink-0" />
-              Version drift: client {versionMismatch.clientVersion}, server{" "}
-              {versionMismatch.serverVersion}.
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="flex items-center gap-1 text-warning text-xs">
+                <TriangleAlertIcon className="size-3.5 shrink-0" />
+                Version drift: client {versionMismatch.clientVersion}, server{" "}
+                {versionMismatch.serverVersion}.
+              </p>
+              <ServerUpdateAction
+                environmentId={environmentId}
+                serverLabel={`${environment.label} server`}
+                selfUpdate={resolveServerSelfUpdateCapability(environment.serverConfig)}
+                targetVersion={versionMismatch.clientVersion}
+              />
+            </div>
           ) : null}
           {environment.connection.error ? (
             <p className="flex min-w-0 items-center gap-2 text-destructive text-xs">
@@ -1512,7 +1523,7 @@ const DesktopSshHostRow = memo(function DesktopSshHostRow({
   const buttonLabel = connectingHostAlias === target.alias ? "Adding…" : "Add environment";
 
   return (
-    <div className="border-t border-border/60 px-4 py-3 first:border-t-0 sm:px-5">
+    <div className="rounded-xl px-3 py-3 sm:px-4">
       <div className={ITEM_ROW_INNER_CLASSNAME}>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium text-foreground">{target.alias}</h3>
@@ -1702,6 +1713,8 @@ function CloudRemoteEnvironmentRows({
 
 export function ConnectionsSettings() {
   const desktopBridge = window.desktopBridge;
+  const executionMode = desktopBridge?.getRuntimeCapabilities?.().executionMode ?? "full";
+  const localBackendAvailable = isLocalBackendAvailable();
   const { environments } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
   const connectPairing = useAtomCommand(connectPairingAtom, { reportFailure: false });
@@ -1762,6 +1775,7 @@ export function ConnectionsSettings() {
   }, [savedEnvironments]);
   const [sshConnectionError, setSshConnectionError] = useState<string | null>(null);
   const [connectingSshHostAlias, setConnectingSshHostAlias] = useState<string | null>(null);
+  const [isChangingExecutionMode, setIsChangingExecutionMode] = useState(false);
 
   const [desktopServerExposureMutationError, setDesktopServerExposureMutationError] = useState<
     string | null
@@ -1832,7 +1846,8 @@ export function ConnectionsSettings() {
   const setDefaultAdvertisedEndpointKey = useUiStateStore(
     (state) => state.setDefaultAdvertisedEndpointKey,
   );
-  const canManageLocalBackend = currentSessionScopes?.includes(AuthAccessWriteScope) ?? false;
+  const canManageLocalBackend =
+    localBackendAvailable && (currentSessionScopes?.includes(AuthAccessWriteScope) ?? false);
   const canManageRelay = currentSessionScopes?.includes(AuthRelayWriteScope) ?? false;
   const authAccessChanges = useEnvironmentQuery(
     canManageLocalBackend && primaryEnvironmentId !== null
@@ -2966,8 +2981,89 @@ export function ConnectionsSettings() {
     />
   );
 
+  const handleExecutionModeChange = useCallback(
+    (nextMode: DesktopExecutionMode) => {
+      if (
+        !desktopBridge?.setExecutionMode ||
+        nextMode === executionMode ||
+        isChangingExecutionMode
+      ) {
+        return;
+      }
+
+      const targetLabel = nextMode === "remote-only" ? "remote-only" : "full";
+      if (
+        !window.confirm(
+          `Switch this device to ${targetLabel} mode? This only changes which environments are available in the UI; the local backend keeps running.`,
+        )
+      ) {
+        return;
+      }
+
+      setIsChangingExecutionMode(true);
+      void desktopBridge
+        .setExecutionMode(nextMode)
+        .catch((error: unknown) => {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Could not change execution mode",
+              description:
+                error instanceof Error
+                  ? error.message
+                  : "Execution mode change failed. Add a saved remote environment before enabling remote-only mode.",
+            }),
+          );
+        })
+        .finally(() => {
+          setIsChangingExecutionMode(false);
+        });
+    },
+    [desktopBridge, executionMode, isChangingExecutionMode],
+  );
+
   return (
     <SettingsPageContainer>
+      {desktopBridge?.setExecutionMode ? (
+        <SettingsSection title="Desktop">
+          <SettingsRow
+            title="Execution mode"
+            description={
+              executionMode === "remote-only"
+                ? "This device's local backend remains available but is blocked in the UI. Use a saved remote environment for projects, threads, and models."
+                : "This app can use this device's local backend. Remote-only mode keeps the backend running but blocks local work in the UI."
+            }
+            control={
+              <Select
+                value={executionMode}
+                onValueChange={(value) => {
+                  if (value === "full" || value === "remote-only") {
+                    handleExecutionModeChange(value);
+                  }
+                }}
+              >
+                <SelectTrigger
+                  className="w-full sm:w-40"
+                  aria-label="Desktop execution mode"
+                  disabled={isChangingExecutionMode}
+                >
+                  <SelectValue>
+                    {executionMode === "remote-only" ? "Remote only" : "Full"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem hideIndicator value="full">
+                    Full
+                  </SelectItem>
+                  <SelectItem hideIndicator value="remote-only">
+                    Remote only
+                  </SelectItem>
+                </SelectPopup>
+              </Select>
+            }
+          />
+        </SettingsSection>
+      ) : null}
       {canManageLocalBackend ? (
         <>
           <SettingsSection title="This environment">
@@ -2981,6 +3077,16 @@ export function ConnectionsSettings() {
                     {primaryVersionMismatch.serverVersion}. Sync them if RPC calls or reconnects
                     fail.
                   </span>
+                }
+                control={
+                  primaryEnvironmentId !== null ? (
+                    <ServerUpdateAction
+                      environmentId={primaryEnvironmentId}
+                      serverLabel={primaryEnvironment?.label ?? "this server"}
+                      selfUpdate={resolveServerSelfUpdateCapability(primaryServerConfig)}
+                      targetVersion={primaryVersionMismatch.clientVersion}
+                    />
+                  ) : undefined
                 }
               />
             ) : null}
@@ -3286,7 +3392,7 @@ export function ConnectionsSettings() {
             </DialogPopup>
           </Dialog>
         </>
-      ) : (
+      ) : localBackendAvailable ? (
         <SettingsSection title="This environment">
           <SettingsRow
             title="Administrative access"
@@ -3294,7 +3400,7 @@ export function ConnectionsSettings() {
           />
           <CloudLinkRow canManageRelay={canManageRelay} />
         </SettingsSection>
-      )}
+      ) : null}
 
       <SettingsSection
         title="Remote environments"

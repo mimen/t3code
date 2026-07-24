@@ -1,8 +1,20 @@
-import { type KeybindingCommand, type FilesystemBrowseEntry } from "@t3tools/contracts";
+import {
+  type ClaudeSessionCatalogueQuery,
+  type EnvironmentId,
+  type FilesystemBrowseEntry,
+  type KeybindingCommand,
+  THREAD_JUMP_KEYBINDING_COMMANDS,
+} from "@t3tools/contracts";
 import type { SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { type ReactNode } from "react";
+import {
+  buildClaudeSessionCatalogueQuery,
+  federatedClaudeSessionKey,
+  type ClaudeSessionQueryFilters,
+  type FederatedClaudeSession,
+} from "../claudeSessionSurfaces.logic";
 import { sortThreads } from "../lib/threadSort";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
@@ -52,6 +64,18 @@ export interface CommandPaletteView {
   readonly initialQuery?: string;
 }
 
+export function enumerateCommandPaletteItems(
+  items: ReadonlyArray<CommandPaletteActionItem>,
+): CommandPaletteActionItem[] {
+  return items.map((item, index) => {
+    const shortcutCommand = THREAD_JUMP_KEYBINDING_COMMANDS[index];
+    if (shortcutCommand) return { ...item, shortcutCommand };
+
+    const { shortcutCommand: _shortcutCommand, ...itemWithoutShortcut } = item;
+    return itemWithoutShortcut;
+  });
+}
+
 export type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-browse";
 
 export function filterBrowseEntries(input: {
@@ -90,17 +114,42 @@ export function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+export function buildClaudeSessionSwitcherQueries(input: {
+  readonly environments: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+  }>;
+  readonly filters: ClaudeSessionQueryFilters;
+}): ReadonlyMap<EnvironmentId, ClaudeSessionCatalogueQuery> {
+  const normalizedQuery = normalizeSearchText(input.filters.query);
+  return new Map(
+    input.environments.map((environment) => {
+      const queryMatchesEnvironmentLabel =
+        normalizedQuery.length > 0 &&
+        normalizeSearchText(environment.label).includes(normalizedQuery);
+      return [
+        environment.environmentId,
+        buildClaudeSessionCatalogueQuery({
+          ...input.filters,
+          query: queryMatchesEnvironmentLabel ? "" : input.filters.query,
+        }),
+      ];
+    }),
+  );
+}
+
 export function buildProjectActionItems(input: {
   projects: ReadonlyArray<Project>;
   valuePrefix: string;
   icon: (project: Project) => ReactNode;
   runProject: (project: Project) => Promise<void>;
+  searchTerms?: (project: Project) => ReadonlyArray<string>;
   shortcutCommand?: KeybindingCommand;
 }): CommandPaletteActionItem[] {
   return input.projects.map((project) => ({
     kind: "action",
     value: `${input.valuePrefix}:${project.environmentId}:${project.id}`,
-    searchTerms: [project.title, project.workspaceRoot],
+    searchTerms: [project.title, project.workspaceRoot, ...(input.searchTerms?.(project) ?? [])],
     title: project.title,
     description: project.workspaceRoot,
     icon: input.icon(project),
@@ -109,6 +158,42 @@ export function buildProjectActionItems(input: {
       await input.runProject(project);
     },
   }));
+}
+
+export function buildClaudeSessionActionItems(input: {
+  readonly sessions: ReadonlyArray<FederatedClaudeSession>;
+  readonly icon: ReactNode;
+  readonly runSession: (session: FederatedClaudeSession) => Promise<void>;
+  readonly renderTrailingContent?: (session: FederatedClaudeSession) => ReactNode;
+}): CommandPaletteActionItem[] {
+  return input.sessions.map((session) => {
+    const trailingContent = input.renderTrailingContent?.(session);
+    return {
+      kind: "action",
+      value: `claude-session:${federatedClaudeSessionKey(session)}`,
+      searchTerms: [
+        session.session.title,
+        session.session.projectName,
+        session.session.sourceCwd,
+        session.session.nativeSessionId,
+        session.environmentLabel,
+      ],
+      title: session.session.title,
+      description: [
+        session.environmentLabel,
+        session.session.projectName,
+        session.session.sourceCwd,
+      ].join(" · "),
+      ...(session.session.latestActivityAt
+        ? { timestamp: formatRelativeTimeLabel(session.session.latestActivityAt) }
+        : {}),
+      icon: input.icon,
+      ...(trailingContent ? { titleTrailingContent: trailingContent } : {}),
+      run: async () => {
+        await input.runSession(session);
+      },
+    };
+  });
 }
 
 export type BuildThreadActionItemsThread = Pick<
@@ -334,6 +419,7 @@ export function getCommandPaletteMode(input: {
 export function buildRootGroups(input: {
   actionItems: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
   recentThreadItems: ReadonlyArray<CommandPaletteActionItem>;
+  claudeSessionItems?: ReadonlyArray<CommandPaletteActionItem>;
 }): CommandPaletteGroup[] {
   const groups: CommandPaletteGroup[] = [];
   if (input.actionItems.length > 0) {
@@ -346,13 +432,20 @@ export function buildRootGroups(input: {
       items: input.recentThreadItems,
     });
   }
+  if ((input.claudeSessionItems?.length ?? 0) > 0) {
+    groups.push({
+      value: "claude-sessions",
+      label: "Native Claude Sessions",
+      items: input.claudeSessionItems ?? [],
+    });
+  }
   return groups;
 }
 
 export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): string {
   switch (mode) {
     case "root":
-      return "Search commands, projects, and threads...";
+      return "Search commands, projects, threads, and Claude sessions...";
     case "root-browse":
       return "Enter project path (e.g. ~/projects/my-app)";
     case "submenu":

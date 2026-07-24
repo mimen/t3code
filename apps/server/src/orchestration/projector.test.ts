@@ -89,6 +89,8 @@ describe("orchestration projector", () => {
         createdAt: now,
         updatedAt: now,
         archivedAt: null,
+        settledOverride: null,
+        settledAt: null,
         deletedAt: null,
         messages: [],
         proposedPlans: [],
@@ -667,6 +669,53 @@ describe("orchestration projector", () => {
       }),
       makeEvent({
         sequence: 10,
+        type: "thread.external-history-imported",
+        aggregateKind: "thread",
+        aggregateId: "thread-1",
+        occurredAt: "2026-02-23T10:00:04.900Z",
+        commandId: "cmd-imported-history",
+        payload: {
+          threadId: "thread-1",
+          sourceId: "claude-source-1",
+          items: [
+            {
+              kind: "message",
+              sourceItemKey: "line-1:message-0",
+              contentHash: "imported-user-hash",
+              message: {
+                id: "imported-user-msg-1",
+                role: "user",
+                text: "Native history stays visible after revert.",
+                turnId: null,
+                streaming: false,
+                provenance: {
+                  origin: "claude-code-jsonl",
+                  sourceId: "claude-source-1",
+                  sourceItemKey: "line-1:message-0",
+                  label: "Imported from Claude Code",
+                },
+                createdAt: "2026-02-23T10:00:00.500Z",
+                updatedAt: "2026-02-23T10:00:00.500Z",
+              },
+            },
+          ],
+          expectedCheckpointRevision: 0,
+          checkpoint: {
+            sourceId: "claude-source-1",
+            fileIdentity: "dev:1:ino:1",
+            committedPrefixHash: "prefix-hash",
+            generation: 0,
+            committedByteOffset: 1,
+            committedLineOrdinal: 1,
+            observedSize: 1,
+            observedMtimeMs: 1,
+            parserVersion: "claude-jsonl-v1",
+            revision: 1,
+          },
+        },
+      }),
+      makeEvent({
+        sequence: 11,
         type: "thread.reverted",
         aggregateKind: "thread",
         aggregateId: "thread-1",
@@ -688,6 +737,7 @@ describe("orchestration projector", () => {
     const thread = afterRevert.threads[0];
     expect(thread?.messages.map((message) => ({ role: message.role, text: message.text }))).toEqual(
       [
+        { role: "user", text: "Native history stays visible after revert." },
         { role: "user", text: "First edit" },
         { role: "assistant", text: "Updated README to v2.\n" },
       ],

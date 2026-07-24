@@ -122,6 +122,9 @@ import {
   ServerRemoveKeybindingInput,
   ServerRemoveKeybindingResult,
   ServerProviderUpdatedPayload,
+  ServerSelfUpdateError,
+  ServerSelfUpdateInput,
+  ServerSelfUpdateResult,
   ServerTraceDiagnosticsResult,
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
@@ -205,6 +208,7 @@ export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
+  serverUpdateServer: "server.updateServer",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
@@ -277,6 +281,12 @@ export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvide
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerUpdateServerRpc = Rpc.make(WS_METHODS.serverUpdateServer, {
+  payload: ServerSelfUpdateInput,
+  success: ServerSelfUpdateResult,
+  error: Schema.Union([ServerSelfUpdateError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerGetSettingsRpc = Rpc.make(WS_METHODS.serverGetSettings, {
@@ -653,6 +663,51 @@ export const WsOrchestrationSubscribeThreadRpc = Rpc.make(
   },
 );
 
+export const WsOrchestrationListClaudeSessionsRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.listClaudeSessions,
+  {
+    payload: OrchestrationRpcSchemas.listClaudeSessions.input,
+    success: OrchestrationRpcSchemas.listClaudeSessions.output,
+    error: Schema.Union([OrchestrationGetSnapshotError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsOrchestrationPreviewClaudeSessionRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.previewClaudeSession,
+  {
+    payload: OrchestrationRpcSchemas.previewClaudeSession.input,
+    success: OrchestrationRpcSchemas.previewClaudeSession.output,
+    error: Schema.Union([OrchestrationGetSnapshotError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsOrchestrationOpenClaudeSessionRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.openClaudeSession,
+  {
+    payload: OrchestrationRpcSchemas.openClaudeSession.input,
+    success: OrchestrationRpcSchemas.openClaudeSession.output,
+    error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsOrchestrationSyncClaudeSessionRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.syncClaudeSession,
+  {
+    payload: OrchestrationRpcSchemas.syncClaudeSession.input,
+    success: OrchestrationRpcSchemas.syncClaudeSession.output,
+    error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsOrchestrationGetThreadTimelinePageRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.getThreadTimelinePage,
+  {
+    payload: OrchestrationRpcSchemas.getThreadTimelinePage.input,
+    success: OrchestrationRpcSchemas.getThreadTimelinePage.output,
+    error: Schema.Union([OrchestrationGetSnapshotError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
   success: TerminalEvent,
@@ -693,6 +748,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
+  WsServerUpdateServerRpc,
   WsServerUpsertKeybindingRpc,
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
@@ -758,4 +814,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsOrchestrationListClaudeSessionsRpc,
+  WsOrchestrationPreviewClaudeSessionRpc,
+  WsOrchestrationOpenClaudeSessionRpc,
+  WsOrchestrationSyncClaudeSessionRpc,
+  WsOrchestrationGetThreadTimelinePageRpc,
 );
