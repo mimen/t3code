@@ -61,6 +61,7 @@ function threadDetailToShell(
     settledOverride: thread.settledOverride,
     settledAt: thread.settledAt,
     session: thread.session,
+    ...(thread.externalSession === undefined ? {} : { externalSession: thread.externalSession }),
     latestUserMessageAt: latestUserMessageAt(thread),
     hasPendingApprovals: false,
     hasPendingUserInput: false,

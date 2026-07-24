@@ -117,6 +117,7 @@ function LocalSettingsRouteScreen() {
             value={`${environmentCount}`}
             target="SettingsEnvironments"
           />
+          <SettingsRow icon="terminal" label="Claude sessions" target="SettingsClaudeSessions" />
         </SettingsSection>
 
         <GeneralSettingsSection />
@@ -470,6 +471,7 @@ function ConfiguredSettingsRouteScreen() {
             value={`${environmentCount}`}
             target="SettingsEnvironments"
           />
+          <SettingsRow icon="terminal" label="Claude sessions" target="SettingsClaudeSessions" />
           <SettingsSwitchRow
             icon="bell.badge"
             label="Device Notifications"

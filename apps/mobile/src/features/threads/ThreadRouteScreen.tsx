@@ -8,6 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as Option from "effect/Option";
 import { EnvironmentId, ThreadId, type ProjectScript } from "@t3tools/contracts";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -34,6 +35,8 @@ import {
 import { useKnownTerminalSessions } from "../../state/use-terminal-session";
 import { useSelectedThreadDetailState } from "../../state/use-thread-detail";
 import { useThreadSelection } from "../../state/use-thread-selection";
+import { externalClaudeSessionRevisionKey } from "../claude-sessions/claudeSessionBrowser";
+import { ExternalClaudeSessionBanner } from "../claude-sessions/ExternalClaudeSessionBanner";
 import { GitActionProgressOverlay } from "./GitActionProgressOverlay";
 import {
   buildTerminalMenuSessions,
@@ -196,6 +199,12 @@ function ThreadRouteContent(
   const gitActions = useSelectedThreadGitActions();
   const requests = useSelectedThreadRequests();
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, "thread interrupt");
+  const syncClaudeSession = useAtomCommand(threadEnvironment.syncClaudeSession, {
+    reportFailure: false,
+  });
+  const [syncingClaudeSourceId, setSyncingClaudeSourceId] = useState<string | null>(null);
+  const [claudeSyncError, setClaudeSyncError] = useState<string | null>(null);
+  const claudeSyncRequestVersionRef = useRef(0);
   const navigation = useNavigation();
   const params = props.route.params;
   const environmentIdRaw = firstRouteParam(params.environmentId);
@@ -277,6 +286,43 @@ function ThreadRouteContent(
         : null,
     [composer.interactionMode, composer.modelSelection, composer.runtimeMode, selectedThread],
   );
+  const externalClaudeSession = selectedThread?.externalSession ?? null;
+  const externalClaudeSessionRevision = externalClaudeSessionRevisionKey(externalClaudeSession);
+  useEffect(() => {
+    claudeSyncRequestVersionRef.current += 1;
+    setSyncingClaudeSourceId(null);
+    setClaudeSyncError(null);
+  }, [externalClaudeSessionRevision]);
+  const handleSyncClaudeSession = useCallback(async () => {
+    if (selectedThread === null || externalClaudeSession === null) {
+      return;
+    }
+    const requestVersion = claudeSyncRequestVersionRef.current + 1;
+    claudeSyncRequestVersionRef.current = requestVersion;
+    setSyncingClaudeSourceId(externalClaudeSession.sourceId);
+    setClaudeSyncError(null);
+    try {
+      const result = await syncClaudeSession({
+        environmentId: selectedThread.environmentId,
+        input: { sourceId: externalClaudeSession.sourceId },
+      });
+      if (requestVersion !== claudeSyncRequestVersionRef.current) {
+        return;
+      }
+      if (result._tag === "Failure") {
+        const error = squashAtomCommandFailure(result);
+        setClaudeSyncError(
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "The server could not synchronize this Claude Code session.",
+        );
+      }
+    } finally {
+      if (requestVersion === claudeSyncRequestVersionRef.current) {
+        setSyncingClaudeSourceId(null);
+      }
+    }
+  }, [externalClaudeSession, selectedThread, syncClaudeSession]);
 
   /* ─── Native header theming ──────────────────────────────────────── */
   const usesNativeHeaderGlass = NATIVE_LIQUID_GLASS_SUPPORTED;
@@ -748,6 +794,15 @@ function ThreadRouteContent(
       <GitActionProgressOverlay progress={gitActionProgress} onDismiss={dismissGitActionResult} />
 
       <View className="flex-1 bg-screen">
+        {externalClaudeSession ? (
+          <ExternalClaudeSessionBanner
+            enabled={routeConnectionState === "connected"}
+            error={claudeSyncError}
+            isSyncing={syncingClaudeSourceId === externalClaudeSession.sourceId}
+            onSync={() => void handleSyncClaudeSession()}
+            session={externalClaudeSession}
+          />
+        ) : null}
         <ThreadDetailScreen
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}
           contentPresentation={contentPresentation}
