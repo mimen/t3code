@@ -15,7 +15,9 @@ import {
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
+  type OrchestrationMessage,
   OrchestrationThreadActivity,
+  type OrchestrationThreadTimelinePage,
   ProviderInteractionMode,
   ProviderDriverKind,
   RuntimeMode,
@@ -209,6 +211,7 @@ import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
+import { ExternalClaudeSessionBanner } from "./chat/ExternalClaudeSessionBanner";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
@@ -238,6 +241,7 @@ import {
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  externalSessionBlocksComposer,
   hasServerAcknowledgedLocalDispatch,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
@@ -1091,6 +1095,35 @@ function chatActionErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "An error occurred.";
 }
 
+type ExternalClaudeTimelinePage = OrchestrationThreadTimelinePage & {
+  readonly threadId: ThreadId;
+};
+
+function mergeExternalClaudeTimelinePages(input: {
+  readonly existing: ExternalClaudeTimelinePage | null;
+  readonly page: OrchestrationThreadTimelinePage;
+  readonly threadId: ThreadId;
+}): ExternalClaudeTimelinePage {
+  const byKey = new Map<string, OrchestrationThreadTimelinePage["items"][number]>();
+  for (const item of input.existing?.threadId === input.threadId ? input.existing.items : []) {
+    byKey.set(
+      item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+      item,
+    );
+  }
+  for (const item of input.page.items) {
+    byKey.set(
+      item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+      item,
+    );
+  }
+  return {
+    threadId: input.threadId,
+    items: [...byKey.values()],
+    nextCursor: input.page.nextCursor,
+  };
+}
+
 function ChatViewContent(props: ChatViewProps) {
   const {
     environmentId,
@@ -1136,6 +1169,12 @@ function ChatViewContent(props: ChatViewProps) {
     reportFailure: false,
   });
   const revertThreadCheckpoint = useAtomCommand(threadEnvironment.revertCheckpoint, {
+    reportFailure: false,
+  });
+  const syncClaudeSession = useAtomCommand(threadEnvironment.syncClaudeSession, {
+    reportFailure: false,
+  });
+  const getThreadTimelinePage = useAtomCommand(threadEnvironment.getTimelinePage, {
     reportFailure: false,
   });
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
@@ -1391,6 +1430,53 @@ function ChatViewContent(props: ChatViewProps) {
   // depend on which route is mounted.
   const isServerThread = serverThread !== null;
   const activeThread = isServerThread ? serverThread : localDraftThread;
+  const externalSessionBlocked = externalSessionBlocksComposer(
+    activeThread?.externalSession?.state,
+  );
+  const [externalClaudeTimelinePage, setExternalClaudeTimelinePage] =
+    useState<ExternalClaudeTimelinePage | null>(null);
+  const externalClaudeTimelineRequestVersion = useRef(0);
+  const [isLoadingOlderClaudeHistory, setIsLoadingOlderClaudeHistory] = useState(false);
+  const [isClaudeSessionSyncing, setIsClaudeSessionSyncing] = useState(false);
+
+  useEffect(() => {
+    if (!activeThread?.externalSession) {
+      externalClaudeTimelineRequestVersion.current += 1;
+      setExternalClaudeTimelinePage(null);
+      return;
+    }
+    const requestVersion = externalClaudeTimelineRequestVersion.current + 1;
+    externalClaudeTimelineRequestVersion.current = requestVersion;
+    let cancelled = false;
+    void (async () => {
+      const result = await getThreadTimelinePage({
+        environmentId: activeThread.environmentId,
+        input: { threadId: activeThread.id, limit: 100 },
+      });
+      if (
+        cancelled ||
+        requestVersion !== externalClaudeTimelineRequestVersion.current ||
+        result._tag !== "Success"
+      ) {
+        return;
+      }
+      setExternalClaudeTimelinePage({
+        threadId: activeThread.id,
+        ...result.value,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeThread?.environmentId,
+    activeThread?.externalSession?.lastSyncedAt,
+    activeThread?.externalSession?.sourceId,
+    activeThread?.externalSession?.state,
+    activeThread?.id,
+    getThreadTimelinePage,
+  ]);
+
   const threadError = isServerThread
     ? (localServerError ?? serverThread?.session?.lastError ?? null)
     : localDraftError;
@@ -1400,6 +1486,94 @@ function ChatViewContent(props: ChatViewProps) {
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const activeThreadId = activeThread?.id ?? null;
+  const syncActiveClaudeSession = useCallback(async () => {
+    if (!activeThread?.externalSession) {
+      return;
+    }
+    setIsClaudeSessionSyncing(true);
+    try {
+      const syncResult = await syncClaudeSession({
+        environmentId: activeThread.environmentId,
+        input: { sourceId: activeThread.externalSession.sourceId },
+      });
+      if (syncResult._tag !== "Success") {
+        const error = squashAtomCommandFailure(syncResult);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Claude history sync failed",
+            description:
+              error instanceof Error
+                ? error.message
+                : "The native session could not be synchronized.",
+          }),
+        );
+        return;
+      }
+      const requestVersion = externalClaudeTimelineRequestVersion.current + 1;
+      externalClaudeTimelineRequestVersion.current = requestVersion;
+      const pageResult = await getThreadTimelinePage({
+        environmentId: activeThread.environmentId,
+        input: { threadId: activeThread.id, limit: 100 },
+      });
+      if (pageResult._tag === "Failure") {
+        const error = squashAtomCommandFailure(pageResult);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Claude history refreshed, but the timeline did not reload",
+            description:
+              error instanceof Error
+                ? error.message
+                : "Open the thread again to reload its history.",
+          }),
+        );
+      } else if (requestVersion === externalClaudeTimelineRequestVersion.current) {
+        setExternalClaudeTimelinePage({
+          threadId: activeThread.id,
+          ...pageResult.value,
+        });
+      }
+    } finally {
+      setIsClaudeSessionSyncing(false);
+    }
+  }, [activeThread, getThreadTimelinePage, syncClaudeSession]);
+  const loadOlderClaudeHistory = useCallback(async () => {
+    if (
+      !activeThread?.externalSession ||
+      externalClaudeTimelinePage?.threadId !== activeThread.id ||
+      externalClaudeTimelinePage.nextCursor === null
+    ) {
+      return;
+    }
+    const requestVersion = externalClaudeTimelineRequestVersion.current;
+    setIsLoadingOlderClaudeHistory(true);
+    try {
+      const result = await getThreadTimelinePage({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId: activeThread.id,
+          beforeCursor: externalClaudeTimelinePage.nextCursor,
+          limit: 100,
+        },
+      });
+      if (
+        result._tag !== "Success" ||
+        requestVersion !== externalClaudeTimelineRequestVersion.current
+      ) {
+        return;
+      }
+      setExternalClaudeTimelinePage((existing) =>
+        mergeExternalClaudeTimelinePages({
+          existing,
+          page: result.value,
+          threadId: activeThread.id,
+        }),
+      );
+    } finally {
+      setIsLoadingOlderClaudeHistory(false);
+    }
+  }, [activeThread, externalClaudeTimelinePage, getThreadTimelinePage]);
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: activeThread?.environmentId ?? null,
     threadId: activeThreadId,
@@ -1900,7 +2074,35 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
   const phase = derivePhase(activeThread?.session ?? null);
-  const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
+  const activeExternalClaudeTimelinePage =
+    externalClaudeTimelinePage?.threadId === activeThread?.id ? externalClaudeTimelinePage : null;
+  const pagedClaudeHistory = useMemo(() => {
+    const messages: OrchestrationMessage[] = [];
+    const activities: OrchestrationThreadActivity[] = [];
+    for (const item of activeExternalClaudeTimelinePage?.items ?? []) {
+      if (item.kind === "message") {
+        messages.push(item.message);
+      } else {
+        activities.push(item.activity);
+      }
+    }
+    return { messages, activities };
+  }, [activeExternalClaudeTimelinePage]);
+  const threadActivities = useMemo(() => {
+    if (activeExternalClaudeTimelinePage === null) {
+      return activeThread?.activities ?? EMPTY_ACTIVITIES;
+    }
+    const activitiesById = new Map<string, OrchestrationThreadActivity>();
+    for (const activity of pagedClaudeHistory.activities) {
+      activitiesById.set(activity.id, activity);
+    }
+    for (const activity of activeThread?.activities ?? []) {
+      if (activity.provenance?.origin !== "claude-code-jsonl") {
+        activitiesById.set(activity.id, activity);
+      }
+    }
+    return [...activitiesById.values()];
+  }, [activeExternalClaudeTimelinePage, activeThread?.activities, pagedClaudeHistory.activities]);
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(threadActivities),
@@ -2233,10 +2435,29 @@ function ChatViewContent(props: ChatViewProps) {
     }
     return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
   }, [attachmentPreviewHandoffByMessageId, displayServerMessages, optimisticUserMessages]);
+  const visibleTimelineMessages = useMemo(() => {
+    if (activeExternalClaudeTimelinePage === null) {
+      return timelineMessages;
+    }
+    const messagesById = new Map<string, OrchestrationMessage>();
+    for (const message of pagedClaudeHistory.messages) {
+      messagesById.set(message.id, message);
+    }
+    for (const message of timelineMessages) {
+      if (message.provenance?.origin !== "claude-code-jsonl") {
+        messagesById.set(message.id, message);
+      }
+    }
+    return [...messagesById.values()];
+  }, [activeExternalClaudeTimelinePage, pagedClaudeHistory.messages, timelineMessages]);
   const timelineEntries = useMemo(
     () =>
-      deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
-    [activeThread?.proposedPlans, timelineMessages, workLogEntries],
+      deriveTimelineEntries(
+        visibleTimelineMessages,
+        activeThread?.proposedPlans ?? [],
+        workLogEntries,
+      ),
+    [activeThread?.proposedPlans, visibleTimelineMessages, workLogEntries],
   );
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
@@ -4261,6 +4482,7 @@ function ChatViewContent(props: ChatViewProps) {
       isSendBusy ||
       isConnecting ||
       activeEnvironmentUnavailable ||
+      externalSessionBlocked ||
       sendInFlightRef.current
     )
       return;
@@ -5479,6 +5701,13 @@ function ChatViewContent(props: ChatViewProps) {
           error={threadError}
           onDismiss={() => setThreadError(activeThread.id, null)}
         />
+        {activeThread.externalSession ? (
+          <ExternalClaudeSessionBanner
+            session={activeThread.externalSession}
+            isSyncing={isClaudeSessionSyncing}
+            onSync={() => void syncActiveClaudeSession()}
+          />
+        ) : null}
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}
@@ -5525,6 +5754,12 @@ function ChatViewContent(props: ChatViewProps) {
                 contentInsetEndAdjustment={composerOverlayHeight}
                 onIsAtEndChange={onIsAtEndChange}
                 onManualNavigation={cancelTimelineLiveFollowForUserNavigation}
+                canLoadOlder={
+                  activeExternalClaudeTimelinePage !== null &&
+                  activeExternalClaudeTimelinePage.nextCursor !== null
+                }
+                isLoadingOlder={isLoadingOlderClaudeHistory}
+                onLoadOlder={() => void loadOlderClaudeHistory()}
                 hideEmptyPlaceholder={isDraftHeroState}
                 topFadeEnabled={!hasTimelineTopBanner}
               />
@@ -5621,6 +5856,7 @@ function ChatViewContent(props: ChatViewProps) {
                             isSendBusy={isSendBusy}
                             isPreparingWorktree={isPreparingWorktree}
                             environmentUnavailable={activeEnvironmentUnavailableState}
+                            externalSessionBlocked={externalSessionBlocked}
                             activePendingApproval={activePendingApproval}
                             pendingApprovals={pendingApprovals}
                             pendingUserInputs={pendingUserInputs}

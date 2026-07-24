@@ -16,6 +16,7 @@ import {
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  externalSessionBlocksComposer,
   getStartedThreadModelChangeBlockReason,
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
@@ -538,5 +539,16 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingApproval: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingUserInput: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, threadError: "failed" })).toBe(true);
+  });
+});
+
+describe("externalSessionBlocksComposer", () => {
+  it("blocks only failed or desynced native Claude sources", () => {
+    expect(externalSessionBlocksComposer(undefined)).toBe(false);
+    expect(externalSessionBlocksComposer(null)).toBe(false);
+    expect(externalSessionBlocksComposer("attached")).toBe(false);
+    expect(externalSessionBlocksComposer("synced")).toBe(false);
+    expect(externalSessionBlocksComposer("failed")).toBe(true);
+    expect(externalSessionBlocksComposer("desynced")).toBe(true);
   });
 });

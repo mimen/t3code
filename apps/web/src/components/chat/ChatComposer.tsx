@@ -18,7 +18,10 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
-import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
+import {
+  connectionStatusText,
+  type EnvironmentConnectionPresentation,
+} from "@t3tools/client-runtime/connection";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import {
@@ -526,6 +529,7 @@ export interface ChatComposerProps {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
   } | null;
+  externalSessionBlocked: boolean;
 
   // Pending approvals / inputs
   activePendingApproval: PendingApproval | null;
@@ -634,6 +638,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isSendBusy,
     isPreparingWorktree,
     environmentUnavailable,
+    externalSessionBlocked,
     activePendingApproval,
     pendingApprovals,
     pendingUserInputs,
@@ -685,6 +690,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setThreadError,
     onExpandImage,
   } = props;
+  const isComposerUnavailable = environmentUnavailable !== null || externalSessionBlocked;
 
   // ------------------------------------------------------------------
   // Store subscriptions (prompt / images / terminal contexts)
@@ -1221,7 +1227,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isConnecting ||
     noProviderAvailable ||
     projectSelectionRequired ||
-    environmentUnavailable !== null ||
+    isComposerUnavailable ||
     !composerSendState.hasSendableContent;
   const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
@@ -1969,7 +1975,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isConnecting ||
       isComposerApprovalState ||
       pendingUserInputs.length > 0 ||
-      projectSelectionRequired
+      projectSelectionRequired ||
+      (isComposerUnavailable && activePendingProgress === null)
     ) {
       return false;
     }
@@ -2220,7 +2227,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           className={cn(
             "rounded-[20px] transition-[background-color] duration-200",
             isDragOverComposer ? "bg-accent/45 ring-1 ring-primary/70" : null,
-            projectSelectionRequired ? "opacity-75" : null,
+            isComposerUnavailable || projectSelectionRequired ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
           )}
           onFocusCapture={(event) => {
@@ -2333,9 +2340,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       isSendBusy={isSendBusy}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
-                        environmentUnavailable !== null ||
-                        noProviderAvailable ||
-                        projectSelectionRequired
+                        isComposerUnavailable || noProviderAvailable || projectSelectionRequired
                       }
                       isPreparingWorktree={false}
                       hasSendableContent={false}
@@ -2574,13 +2579,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         ? "Add feedback to refine the plan, or leave this blank to implement it"
                         : projectSelectionRequired
                           ? "Choose a project above to start a thread"
-                          : noProviderAvailable
-                            ? "Enable a provider in Settings to send a message"
-                            : phase === "disconnected"
-                              ? "Ask for follow-up changes or attach images"
-                              : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                          : externalSessionBlocked
+                            ? "Resolve the Claude Code source issue above before sending a turn"
+                            : environmentUnavailable
+                              ? `${environmentUnavailable.label}: ${connectionStatusText(
+                                  environmentUnavailable.connection,
+                                )}`
+                              : noProviderAvailable
+                                ? "Enable a provider in Settings to send a message"
+                                : phase === "disconnected"
+                                  ? "Ask for follow-up changes or attach images"
+                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
                 }
-                disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
+                disabled={
+                  isConnecting ||
+                  isComposerApprovalState ||
+                  projectSelectionRequired ||
+                  (isComposerUnavailable && activePendingProgress === null)
+                }
               />
               {showMobilePendingAnswerActions ? (
                 <div
@@ -2596,9 +2612,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isSendBusy={isSendBusy}
                     isConnecting={isConnecting}
                     isEnvironmentUnavailable={
-                      environmentUnavailable !== null ||
-                      noProviderAvailable ||
-                      projectSelectionRequired
+                      isComposerUnavailable || noProviderAvailable || projectSelectionRequired
                     }
                     isPreparingWorktree={false}
                     hasSendableContent={false}
@@ -2726,9 +2740,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   isSendBusy={isSendBusy}
                   isConnecting={isConnecting}
                   isEnvironmentUnavailable={
-                    environmentUnavailable !== null ||
-                    noProviderAvailable ||
-                    projectSelectionRequired
+                    isComposerUnavailable || noProviderAvailable || projectSelectionRequired
                   }
                   isPreparingWorktree={isPreparingWorktree}
                   hasSendableContent={composerSendState.hasSendableContent}

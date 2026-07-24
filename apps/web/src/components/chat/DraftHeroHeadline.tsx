@@ -1,9 +1,11 @@
 import type { ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { FolderPlusIcon } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { FolderPlusIcon, HistoryIcon, SquarePenIcon } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 
+import type { ClaudeSessionProjectScope } from "~/claudeSessionSurfaces.logic";
 import { openCommandPalette } from "~/commandPaletteBus";
+import { useCurrentClaudeSessionProjectScope } from "~/hooks/useCurrentClaudeSessionProjectScope";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useClientSettings } from "~/hooks/useSettings";
 import { selectProjectGroupingSettings } from "~/logicalProject";
@@ -13,6 +15,7 @@ import {
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
+import { ClaudeSessionBrowserDialog } from "../ClaudeSessionBrowserDialog";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
 import {
   Menu,
@@ -41,6 +44,9 @@ export function DraftHeroHeadline({
   const projectSortOrder = useClientSettings((settings) => settings.sidebarProjectSortOrder);
   const handleNewThread = useNewThreadHandler();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
+  const projectScope = useCurrentClaudeSessionProjectScope();
+  const [openClaudeSessionProjectScope, setOpenClaudeSessionProjectScope] =
+    useState<ClaudeSessionProjectScope | null>(null);
 
   const environmentLabelById = useMemo(
     () =>
@@ -145,14 +151,46 @@ export function DraftHeroHeadline({
   );
 
   return (
-    <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
-      {hasResolvedProject ? (
-        <>What should we build in {projectSelector}?</>
-      ) : canChooseProject ? (
-        <>{projectSelector} to start</>
-      ) : (
-        <>Add a project to start</>
-      )}
-    </h1>
+    <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-4 text-center">
+      <h1 className="w-full font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
+        {hasResolvedProject ? (
+          <>What should we build in {projectSelector}?</>
+        ) : canChooseProject ? (
+          <>{projectSelector} to start</>
+        ) : (
+          <>Add a project to start</>
+        )}
+      </h1>
+      {projectScope ? (
+        <div
+          className="pointer-events-auto inline-flex items-center rounded-lg border border-border/70 bg-muted/25 p-0.5 text-xs shadow-sm"
+          role="group"
+          aria-label="Choose a new task or continue a Claude session"
+        >
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-md bg-background px-2.5 font-medium text-foreground shadow-sm">
+            <SquarePenIcon className="size-3.5" />
+            New task
+          </span>
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setOpenClaudeSessionProjectScope(projectScope)}
+          >
+            <HistoryIcon className="size-3.5" />
+            Continue Claude session
+          </button>
+        </div>
+      ) : null}
+      <ClaudeSessionBrowserDialog
+        open={openClaudeSessionProjectScope !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOpenClaudeSessionProjectScope(null);
+          }
+        }}
+        projectScope={openClaudeSessionProjectScope}
+      />
+    </div>
   );
 }

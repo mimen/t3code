@@ -1,5 +1,6 @@
 import {
   type EnvironmentId,
+  type ExternalSessionSyncState,
   isProviderDriverKind,
   ProjectId,
   type ModelSelection,
@@ -52,6 +53,12 @@ export function resolveThreadMetadataUpdateForNextTurn(input: {
     ...(modelSelectionChanged ? { modelSelection: nextModelSelection } : {}),
     ...(branchChanged ? { branch: input.nextBranch, worktreePath: null } : {}),
   };
+}
+
+export function externalSessionBlocksComposer(
+  state: ExternalSessionSyncState | null | undefined,
+): boolean {
+  return state === "failed" || state === "desynced";
 }
 
 export function buildLocalDraftThread(

@@ -19,6 +19,7 @@ import {
   FolderPlusIcon,
   GitBranchIcon,
   EllipsisIcon,
+  HistoryIcon,
   MessageSquareIcon,
   PlusIcon,
   SearchIcon,
@@ -111,6 +112,7 @@ import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import { prStatusIndicator, resolveThreadPr } from "./ThreadStatusIndicators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
+import { ClaudeSessionBrowserDialog } from "./ClaudeSessionBrowserDialog";
 import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { primaryServerProvidersAtom } from "../state/server";
@@ -854,6 +856,7 @@ export default function SidebarV2() {
     null,
   );
   const [projectScopeMenuOpen, setProjectScopeMenuOpen] = useState(false);
+  const [isClaudeSessionBrowserOpen, setIsClaudeSessionBrowserOpen] = useState(false);
   const newThreadContext = useHandleNewThread();
   const openAddProjectCommandPalette = useCallback(
     () => openCommandPalette({ open: "add-project" }),
@@ -1804,6 +1807,28 @@ export default function SidebarV2() {
                       size="sm"
                       type="button"
                       className="relative size-8 justify-center rounded-md border-0 bg-transparent p-0 text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                      onClick={() => setIsClaudeSessionBrowserOpen(true)}
+                      aria-label="Browse Claude sessions"
+                    />
+                  }
+                >
+                  <HistoryIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
+                  <span
+                    className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                    aria-hidden="true"
+                  />
+                </TooltipTrigger>
+                <TooltipPopup side="right">Browse Claude sessions</TooltipPopup>
+              </Tooltip>
+            </div>
+            <div className="shrink-0">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <SidebarMenuButton
+                      size="sm"
+                      type="button"
+                      className="relative size-8 justify-center rounded-md border-0 bg-transparent p-0 text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                       onClick={handleNewThreadClick}
                       disabled={visibleProjects.length === 0}
                       aria-label="New thread"
@@ -2216,6 +2241,10 @@ export default function SidebarV2() {
           </DialogFooter>
         </DialogPopup>
       </Dialog>
+      <ClaudeSessionBrowserDialog
+        open={isClaudeSessionBrowserOpen}
+        onOpenChange={setIsClaudeSessionBrowserOpen}
+      />
       <SidebarChromeFooter />
     </>
   );

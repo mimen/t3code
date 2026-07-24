@@ -185,6 +185,9 @@ interface MessagesTimelineProps {
   contentInsetEndAdjustment: number;
   onIsAtEndChange: (isAtEnd: boolean) => void;
   onManualNavigation: () => void;
+  canLoadOlder?: boolean;
+  isLoadingOlder?: boolean;
+  onLoadOlder?: () => void;
   hideEmptyPlaceholder?: boolean;
   topFadeEnabled?: boolean;
 }
@@ -220,6 +223,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   contentInsetEndAdjustment,
   onIsAtEndChange,
   onManualNavigation,
+  canLoadOlder = false,
+  isLoadingOlder = false,
+  onLoadOlder,
   hideEmptyPlaceholder = false,
   topFadeEnabled = false,
 }: MessagesTimelineProps) {
@@ -517,7 +523,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               "scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
               topFadeEnabled && "chat-timeline-scroll-fade",
             )}
-            ListHeaderComponent={topFadeEnabled ? TIMELINE_LIST_FADE_HEADER : TIMELINE_LIST_HEADER}
+            ListHeaderComponent={
+              canLoadOlder && onLoadOlder ? (
+                <div className="flex justify-center py-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isLoadingOlder}
+                    onClick={onLoadOlder}
+                  >
+                    {isLoadingOlder ? "Loading history…" : "Load older history"}
+                  </Button>
+                </div>
+              ) : topFadeEnabled ? (
+                TIMELINE_LIST_FADE_HEADER
+              ) : (
+                TIMELINE_LIST_HEADER
+              )
+            }
             ListFooterComponent={TIMELINE_LIST_FOOTER}
           />
           <TimelineMinimap
@@ -893,6 +917,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   return (
     <div className="group flex flex-col items-end gap-1">
       <div className="relative max-w-[80%] rounded-2xl bg-secondary p-3">
+        <ImportedClaudeBadge provenance={row.message.provenance} />
         {regularImages.length > 0 && (
           <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
             {regularImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
@@ -1017,6 +1042,19 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
   );
 }
 
+function ImportedClaudeBadge({ provenance }: { provenance: TimelineMessage["provenance"] }) {
+  if (provenance?.origin !== "claude-code-jsonl") {
+    return null;
+  }
+  return (
+    <div className="mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
+      <span className="rounded border border-border/70 bg-muted/50 px-1.5 py-0.5">
+        {provenance.label ?? "Imported from Claude Code"}
+      </span>
+    </div>
+  );
+}
+
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
@@ -1024,6 +1062,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
+        <ImportedClaudeBadge provenance={row.message.provenance} />
         <ChatMarkdown
           text={messageText}
           cwd={ctx.markdownCwd}

@@ -1,6 +1,7 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { Outlet, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { useClientSettings } from "../hooks/useSettings";
@@ -11,6 +12,7 @@ import { selectProjectGroupingSettings } from "../logicalProject";
 import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
 import { dispatchPreviewAction } from "../components/preview/previewActionBus";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { buildThreadRouteParams } from "../threadRoutes";
 import {
   startNewLocalThreadFromContext,
   startNewThreadFromContext,
@@ -23,7 +25,44 @@ import { isPreviewSupportedInRuntime } from "../previewStateStore";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import { useActiveEnvironmentId } from "~/state/entities";
+import { useEnvironmentQuery } from "~/state/query";
 import { primaryServerKeybindingsAtom } from "~/state/server";
+import { environmentShell } from "~/state/shell";
+
+function ClaudeSessionFocusNavigator() {
+  const navigate = useNavigate();
+  const activeEnvironmentId = useActiveEnvironmentId();
+  const shell = useEnvironmentQuery(
+    activeEnvironmentId === null ? null : environmentShell.stateAtom(activeEnvironmentId),
+  );
+  const handledRequestIdRef = useRef<string | null>(null);
+  const initializedEnvironmentIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (activeEnvironmentId === null || shell.data?.snapshot._tag !== "Some") {
+      return;
+    }
+    const focusRequest = shell.data.snapshot.value.focusRequest;
+    if (initializedEnvironmentIdRef.current !== activeEnvironmentId) {
+      initializedEnvironmentIdRef.current = activeEnvironmentId;
+      handledRequestIdRef.current = focusRequest?.requestId ?? null;
+      return;
+    }
+    if (focusRequest === undefined || focusRequest.requestId === handledRequestIdRef.current) {
+      return;
+    }
+
+    handledRequestIdRef.current = focusRequest.requestId;
+    window.focus();
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(activeEnvironmentId, focusRequest.threadId)),
+    });
+  }, [activeEnvironmentId, navigate, shell.data]);
+
+  return null;
+}
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -180,6 +219,7 @@ function ChatRouteGlobalShortcuts() {
 function ChatRouteLayout() {
   return (
     <>
+      <ClaudeSessionFocusNavigator />
       <ChatRouteGlobalShortcuts />
       <Outlet />
     </>
