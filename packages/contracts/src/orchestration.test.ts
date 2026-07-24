@@ -3,6 +3,10 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
+  ClaudeSessionAttachmentStatusSnapshot,
+  ClaudeSessionCataloguePage,
+  ClaudeSessionCatalogueQuery,
+  ClaudeSessionPreview,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   ModelSelection,
@@ -41,6 +45,12 @@ const decodeOrchestrationProposedPlan = Schema.decodeUnknownEffect(Orchestration
 const decodeOrchestrationSession = Schema.decodeUnknownEffect(OrchestrationSession);
 const decodeOrchestrationThread = Schema.decodeUnknownEffect(OrchestrationThread);
 const decodeOrchestrationThreadShell = Schema.decodeUnknownEffect(OrchestrationThreadShell);
+const decodeClaudeSessionCatalogueQuery = Schema.decodeUnknownEffect(ClaudeSessionCatalogueQuery);
+const decodeClaudeSessionCataloguePage = Schema.decodeUnknownEffect(ClaudeSessionCataloguePage);
+const decodeClaudeSessionPreview = Schema.decodeUnknownEffect(ClaudeSessionPreview);
+const decodeClaudeSessionAttachmentStatusSnapshot = Schema.decodeUnknownEffect(
+  ClaudeSessionAttachmentStatusSnapshot,
+);
 const encodeThreadCreatedPayload = Schema.encodeEffect(ThreadCreatedPayload);
 
 function getOptionValue(
@@ -53,6 +63,118 @@ const decodeThreadCreatedPayload = Schema.decodeUnknownEffect(ThreadCreatedPaylo
 const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
 const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
+
+it.effect("decodes Claude catalogue pagination and filters", () =>
+  Effect.gen(function* () {
+    const query = yield* decodeClaudeSessionCatalogueQuery({
+      query: "indexed",
+      cwdPrefix: "/workspace",
+      projectRoot: "/workspace/project",
+      activityWindow: "7d",
+      sort: "title",
+      limit: 25,
+      cursor: "next-page",
+      freshness: "require-fresh",
+    });
+    assert.deepStrictEqual(query, {
+      query: "indexed",
+      cwdPrefix: "/workspace",
+      projectRoot: "/workspace/project",
+      activityWindow: "7d",
+      sort: "title",
+      limit: 25,
+      cursor: "next-page",
+      freshness: "require-fresh",
+    });
+
+    const invalidLimit = yield* Effect.exit(decodeClaudeSessionCatalogueQuery({ limit: 201 }));
+    assert.strictEqual(invalidLimit._tag, "Failure");
+  }),
+);
+
+it.effect("decodes daemon and degraded Claude catalogue pages", () =>
+  Effect.gen(function* () {
+    const base = {
+      sessions: [],
+      nextCursor: null,
+      sourceStatus: {
+        generation: 2,
+        phase: "idle",
+        freshness: "fresh",
+        indexedAt: "2026-07-22T12:00:00.000Z",
+        refreshedAt: "2026-07-22T12:00:00.000Z",
+        ageMs: 5,
+        staleAfterMs: 5_000,
+        rowCount: 0,
+        lastError: null,
+        lastRefresh: { scanned: 0, parsed: 0, skipped: 0, removed: 0 },
+      },
+    };
+    const daemon = yield* decodeClaudeSessionCataloguePage({
+      ...base,
+      mode: { kind: "ccs-daemon", protocolVersion: 1 },
+    });
+    assert.strictEqual(daemon.mode.kind, "ccs-daemon");
+
+    const degraded = yield* decodeClaudeSessionCataloguePage({
+      ...base,
+      mode: {
+        kind: "builtin-degraded",
+        reason: "CCS unavailable",
+        candidateLimit: 200,
+      },
+    });
+    assert.strictEqual(degraded.mode.kind, "builtin-degraded");
+  }),
+);
+
+it.effect("bounds Claude live preview excerpts", () =>
+  Effect.gen(function* () {
+    const valid = yield* decodeClaudeSessionPreview({
+      providerInstanceId: "claudeAgent",
+      localSourceHost: "test-host",
+      nativeSessionId: "123e4567-e89b-42d3-a456-426614174000",
+      sourceCwd: "/workspace/project",
+      title: "Preview",
+      firstUserExcerpt: "x".repeat(400),
+      latestUserExcerpt: null,
+      latestAssistantExcerpt: "answer",
+      isPartial: false,
+    });
+    assert.strictEqual(valid.firstUserExcerpt?.length, 400);
+
+    const tooLong = yield* Effect.exit(
+      decodeClaudeSessionPreview({ ...valid, firstUserExcerpt: "x".repeat(401) }),
+    );
+    assert.strictEqual(tooLong._tag, "Failure");
+  }),
+);
+
+it.effect("decodes the read-only T3 attachment and runtime status snapshot", () =>
+  Effect.gen(function* () {
+    const snapshot = yield* decodeClaudeSessionAttachmentStatusSnapshot({
+      protocolVersion: 1,
+      generatedAt: "2026-07-22T12:00:00.000Z",
+      attachments: [
+        {
+          providerInstanceId: "claudeAgent",
+          localSourceHost: "test-host",
+          nativeSessionId: "123e4567-e89b-42d3-a456-426614174000",
+          sourceCwd: "/workspace/project",
+          sourceId: "source-1",
+          threadId: "thread-1",
+          projectId: "project-1",
+          state: "synced",
+          lastSyncedAt: "2026-07-22T11:59:00.000Z",
+          diagnostic: null,
+          runtimeStatus: "running",
+          runtimeLastSeenAt: "2026-07-22T12:00:00.000Z",
+        },
+      ],
+    });
+    assert.strictEqual(snapshot.attachments[0]?.runtimeStatus, "running");
+  }),
+);
 
 it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
   Effect.gen(function* () {

@@ -318,6 +318,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               text: "hello from projection",
               turnId: asTurnId("turn-1"),
               streaming: false,
+              provenance: { origin: "t3" },
               createdAt: "2026-02-24T00:00:04.000Z",
               updatedAt: "2026-02-24T00:00:05.000Z",
             },
@@ -341,6 +342,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               summary: "provider started",
               payload: { stage: "start" },
               turnId: asTurnId("turn-1"),
+              provenance: { origin: "t3" },
               createdAt: "2026-02-24T00:00:06.000Z",
             },
           ],
@@ -1097,6 +1099,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           summary: "unsequenced first",
           payload: { source: "unsequenced" },
           turnId: null,
+          provenance: { origin: "t3" },
           createdAt: "2026-04-01T00:00:06.000Z",
         },
         {
@@ -1107,6 +1110,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           payload: { source: "sequence-1" },
           turnId: null,
           sequence: 1,
+          provenance: { origin: "t3" },
           createdAt: "2026-04-01T00:00:05.000Z",
         },
         {
@@ -1117,6 +1121,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           payload: { source: "sequence-2" },
           turnId: null,
           sequence: 2,
+          provenance: { origin: "t3" },
           createdAt: "2026-04-01T00:00:04.000Z",
         },
       ]);
@@ -1415,6 +1420,242 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
       const fullSnapshot = yield* snapshotQuery.getSnapshot();
       assert.equal(fullSnapshot.threads[0]?.latestTurn?.turnId, asTurnId("turn-running"));
       assert.equal(fullSnapshot.threads[0]?.latestTurn?.state, "running");
+    }),
+  );
+
+  it.effect("pages a mixed timeline with SQL keyset cursors", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_thread_messages`;
+      yield* sql`DELETE FROM projection_thread_activities`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_projects`;
+
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-timeline-page',
+          'Timeline page project',
+          '/tmp/timeline-page',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          '[]',
+          '2026-06-01T00:00:00.000Z',
+          '2026-06-01T00:00:00.000Z',
+          NULL
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id,
+          project_id,
+          title,
+          model_selection_json,
+          runtime_mode,
+          interaction_mode,
+          branch,
+          worktree_path,
+          latest_turn_id,
+          latest_user_message_at,
+          pending_approval_count,
+          pending_user_input_count,
+          has_actionable_proposed_plan,
+          created_at,
+          updated_at,
+          archived_at,
+          deleted_at
+        )
+        VALUES (
+          'thread-timeline-page',
+          'project-timeline-page',
+          'Timeline page thread',
+          '{"provider":"codex","model":"gpt-5-codex"}',
+          'full-access',
+          'default',
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          0,
+          0,
+          0,
+          '2026-06-01T00:00:00.000Z',
+          '2026-06-01T00:00:00.000Z',
+          NULL,
+          NULL
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_messages (
+          message_id,
+          thread_id,
+          turn_id,
+          role,
+          text,
+          attachments_json,
+          is_streaming,
+          provenance_json,
+          timeline_order_key,
+          created_at,
+          updated_at
+        )
+        VALUES
+          (
+            'message-legacy',
+            'thread-timeline-page',
+            NULL,
+            'user',
+            'Legacy message',
+            NULL,
+            0,
+            NULL,
+            NULL,
+            '2026-06-01T00:00:01.000Z',
+            '2026-06-01T00:00:01.000Z'
+          ),
+          (
+            'message-imported',
+            'thread-timeline-page',
+            NULL,
+            'assistant',
+            'Imported message',
+            NULL,
+            0,
+            NULL,
+            '2026-06-01T00:00:02.000Z:000000000002:000001',
+            '2026-06-01T00:00:02.000Z',
+            '2026-06-01T00:00:02.000Z'
+          ),
+          (
+            'message-newest',
+            'thread-timeline-page',
+            NULL,
+            'assistant',
+            'Newest message',
+            NULL,
+            0,
+            NULL,
+            NULL,
+            '2026-06-01T00:00:03.000Z',
+            '2026-06-01T00:00:03.000Z'
+          )
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id,
+          thread_id,
+          turn_id,
+          tone,
+          kind,
+          summary,
+          payload_json,
+          sequence,
+          provenance_json,
+          timeline_order_key,
+          created_at
+        )
+        VALUES
+          (
+            'activity-legacy',
+            'thread-timeline-page',
+            NULL,
+            'tool',
+            'tool-call',
+            'Legacy activity',
+            '{}',
+            NULL,
+            NULL,
+            NULL,
+            '2026-06-01T00:00:01.000Z'
+          ),
+          (
+            'activity-imported',
+            'thread-timeline-page',
+            NULL,
+            'tool',
+            'tool-result',
+            'Imported activity',
+            '{"ok":true}',
+            NULL,
+            NULL,
+            '2026-06-01T00:00:02.000Z:000000000002:000000',
+            '2026-06-01T00:00:02.000Z'
+          )
+      `;
+
+      const newestPage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        limit: 2,
+      });
+      assert.equal(newestPage._tag, "Some");
+      if (newestPage._tag !== "Some") {
+        return;
+      }
+      assert.deepEqual(
+        newestPage.value.items.map((item) =>
+          item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+        ),
+        ["message:message-imported", "message:message-newest"],
+      );
+      assert.equal(newestPage.value.items[0]?.kind, "message");
+      if (newestPage.value.items[0]?.kind === "message") {
+        assert.deepEqual(newestPage.value.items[0].message.provenance, { origin: "t3" });
+      }
+      assert.notEqual(newestPage.value.nextCursor, null);
+
+      const middlePage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        beforeCursor: newestPage.value.nextCursor ?? undefined,
+        limit: 2,
+      });
+      assert.equal(middlePage._tag, "Some");
+      if (middlePage._tag !== "Some") {
+        return;
+      }
+      assert.deepEqual(
+        middlePage.value.items.map((item) =>
+          item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+        ),
+        ["message:message-legacy", "activity:activity-imported"],
+      );
+      assert.notEqual(middlePage.value.nextCursor, null);
+
+      const oldestPage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        beforeCursor: middlePage.value.nextCursor ?? undefined,
+        limit: 2,
+      });
+      assert.equal(oldestPage._tag, "Some");
+      if (oldestPage._tag !== "Some") {
+        return;
+      }
+      assert.deepEqual(
+        oldestPage.value.items.map((item) =>
+          item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+        ),
+        ["activity:activity-legacy"],
+      );
+      assert.equal(oldestPage.value.nextCursor, null);
+
+      const malformedCursorPage = yield* snapshotQuery.getThreadTimelinePage({
+        threadId: ThreadId.make("thread-timeline-page"),
+        beforeCursor: "not-a-timeline-cursor",
+        limit: 2,
+      });
+      assert.equal(malformedCursorPage._tag, "Some");
+      if (malformedCursorPage._tag === "Some") {
+        assert.deepEqual(malformedCursorPage.value, { items: [], nextCursor: null });
+      }
     }),
   );
 

@@ -7,6 +7,13 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
+import { ClaudeSessionCoordinator } from "../claudeSessions/ClaudeSessionCoordinator.ts";
+import { ClaudeSessionFocus } from "../claudeSessions/ClaudeSessionFocus.ts";
+import { ClaudeSessionStatus } from "../claudeSessions/ClaudeSessionStatus.ts";
+import {
+  toClaudeSessionOpenFailure,
+  toClaudeSessionOpenSuccess,
+} from "../claudeSessions/bridge.ts";
 import { normalizeDispatchCommand } from "./Normalizer.ts";
 import {
   annotateEnvironmentRequest,
@@ -70,6 +77,56 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
             return yield* failEnvironmentNotFound("thread_not_found");
           }
           return snapshot.value;
+        }),
+      )
+      .handle(
+        "claudeSessionAttachmentStatus",
+        Effect.fn("environment.orchestration.claudeSessionAttachmentStatus")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          const claudeSessionStatus = yield* Effect.serviceOption(ClaudeSessionStatus);
+          if (Option.isNone(claudeSessionStatus)) {
+            return yield* failEnvironmentInternal(
+              "claude_session_attachment_status_failed",
+              new Error("Claude session status support is unavailable."),
+            );
+          }
+          return yield* claudeSessionStatus.value
+            .getSnapshot()
+            .pipe(
+              Effect.catch((cause) =>
+                failEnvironmentInternal("claude_session_attachment_status_failed", cause),
+              ),
+            );
+        }),
+      )
+      .handle(
+        "openClaudeSession",
+        Effect.fn("environment.orchestration.openClaudeSession")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          const claudeSessionCoordinator = yield* Effect.serviceOption(ClaudeSessionCoordinator);
+          if (Option.isNone(claudeSessionCoordinator)) {
+            return toClaudeSessionOpenFailure({
+              operation: "session-service",
+              message: "Claude session support is unavailable in this T3 server.",
+            });
+          }
+          const opened = yield* claudeSessionCoordinator.value
+            .open({
+              nativeSessionId: args.payload.nativeSessionId,
+              cwd: args.payload.cwd,
+              ...(args.payload.model === undefined ? {} : { model: args.payload.model }),
+            })
+            .pipe(
+              Effect.map(toClaudeSessionOpenSuccess),
+              Effect.catch((error) => Effect.succeed(toClaudeSessionOpenFailure(error))),
+            );
+          const claudeSessionFocus = yield* Effect.serviceOption(ClaudeSessionFocus);
+          if (opened.ok && Option.isSome(claudeSessionFocus)) {
+            yield* claudeSessionFocus.value.requestFocus(opened.value.threadId);
+          }
+          return opened;
         }),
       )
       .handle(

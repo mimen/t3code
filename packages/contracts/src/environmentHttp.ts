@@ -27,6 +27,9 @@ import {
 import { AuthSessionId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import {
+  ClaudeSessionAttachmentStatusSnapshot,
+  ClaudeSessionOpenInput,
+  ClaudeSessionOpenResult,
   ClientOrchestrationCommand,
   DispatchResult,
   OrchestrationReadModel,
@@ -83,6 +86,7 @@ export const EnvironmentInternalErrorReason = Schema.Literals([
   "client_session_revoke_failed",
   "orchestration_snapshot_failed",
   "orchestration_thread_snapshot_failed",
+  "claude_session_attachment_status_failed",
   "orchestration_dispatch_failed",
   "internal_error",
 ]);
@@ -478,6 +482,25 @@ export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestr
       params: EnvironmentOrchestrationThreadSnapshotParams,
       success: OrchestrationThreadDetailSnapshot,
       error: EnvironmentOrchestrationThreadSnapshotErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "claudeSessionAttachmentStatus",
+      "/api/orchestration/claude-sessions/attachment-status",
+      {
+        headers: OptionalBearerHeaders,
+        success: ClaudeSessionAttachmentStatusSnapshot,
+        error: EnvironmentOrchestrationSnapshotErrors,
+      },
+    ).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("openClaudeSession", "/api/orchestration/claude-sessions/open", {
+      headers: OptionalBearerHeaders,
+      payload: ClaudeSessionOpenInput,
+      success: ClaudeSessionOpenResult,
+      error: EnvironmentScopedOperationErrors,
     }).middleware(EnvironmentAuthenticatedAuth),
   )
   .add(

@@ -298,6 +298,49 @@ export function applyThreadDetailEvent(
       };
     }
 
+    // ── External Claude Code history ────────────────────────────────
+    case "thread.external-session-attached":
+    case "thread.external-session-sync-state-updated":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          externalSession: event.payload.externalSession,
+          updatedAt: event.occurredAt,
+        },
+      };
+
+    case "thread.external-history-imported": {
+      const messages = [...thread.messages];
+      const activities = [...thread.activities];
+      for (const item of event.payload.items) {
+        if (item.kind === "message") {
+          const index = messages.findIndex((message) => message.id === item.message.id);
+          if (index >= 0) {
+            messages[index] = item.message;
+          } else {
+            messages.push(item.message);
+          }
+          continue;
+        }
+        const index = activities.findIndex((activity) => activity.id === item.activity.id);
+        if (index >= 0) {
+          activities[index] = item.activity;
+        } else {
+          activities.push(item.activity);
+        }
+      }
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          messages,
+          activities,
+          updatedAt: event.occurredAt,
+        },
+      };
+    }
+
     // ── Session ─────────────────────────────────────────────────────
     case "thread.session-set": {
       // Leaving the "running" session status is the turn-end signal: settle a

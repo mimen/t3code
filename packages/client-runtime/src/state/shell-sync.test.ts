@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   ORCHESTRATION_WS_METHODS,
+  ThreadId,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
 } from "@t3tools/contracts";
@@ -145,6 +146,24 @@ describe("environment shell synchronization", () => {
       const state = yield* SubscriptionRef.get(shellState);
       expect(state.status).toBe("live");
       expect(Option.getOrThrow(state.snapshot)).toEqual(LIVE_SHELL_SNAPSHOT);
+
+      yield* Queue.offer(events, {
+        kind: "thread-focus-requested",
+        request: {
+          requestId: "focus-request-1",
+          threadId: ThreadId.make("thread-1"),
+        },
+      });
+      for (let index = 0; index < 10; index += 1) {
+        yield* Effect.yieldNow;
+      }
+
+      expect(
+        Option.getOrThrow((yield* SubscriptionRef.get(shellState)).snapshot).focusRequest,
+      ).toEqual({
+        requestId: "focus-request-1",
+        threadId: "thread-1",
+      });
     }),
   );
 

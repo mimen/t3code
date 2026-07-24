@@ -13,6 +13,7 @@ import {
   OrchestrationThreadActivityTone,
   ThreadId,
   TurnId,
+  OrchestrationItemProvenance,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
@@ -29,6 +30,8 @@ export const ProjectionThreadActivity = Schema.Struct({
   summary: Schema.String,
   payload: Schema.Unknown,
   sequence: Schema.optional(NonNegativeInt),
+  provenance: Schema.optional(OrchestrationItemProvenance),
+  timelineOrderKey: Schema.optional(Schema.String),
   createdAt: IsoDateTime,
 });
 export type ProjectionThreadActivity = typeof ProjectionThreadActivity.Type;

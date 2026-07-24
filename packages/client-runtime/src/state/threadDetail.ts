@@ -60,6 +60,7 @@ export function mergeEnvironmentThread(
     settledOverride: shell.settledOverride,
     settledAt: shell.settledAt,
     session: shell.session,
+    ...(shell.externalSession === undefined ? {} : { externalSession: shell.externalSession }),
   };
 }
 

@@ -152,9 +152,11 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         : Option.match(current.snapshot, {
             onNone: () => null,
             onSome: (snapshot) =>
-              item.sequence > snapshot.snapshotSequence
-                ? applyShellStreamEvent(snapshot, item)
-                : snapshot,
+              item.kind === "thread-focus-requested"
+                ? { ...snapshot, focusRequest: item.request }
+                : item.sequence > snapshot.snapshotSequence
+                  ? applyShellStreamEvent(snapshot, item)
+                  : snapshot,
           });
     if (nextSnapshot === null) {
       return;
