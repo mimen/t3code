@@ -1,255 +1,388 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodePath from "node:path";
+
 import {
-  CommandId,
-  ProjectId,
-  ProviderInstanceId,
-  ThreadId,
-  type OrchestrationReadModel,
+  AuthAdministrativeScopes,
+  AuthOrchestrationReadScope,
+  EnvironmentHttpApi,
+  type ClaudeSessionAttachmentStatusCliResult,
+  type ClaudeSessionOpenResult,
 } from "@t3tools/contracts";
 import * as Console from "effect/Console";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
+import * as Option from "effect/Option";
 import * as References from "effect/References";
-import * as Schema from "effect/Schema";
-import { Argument, Command, Flag, GlobalFlag } from "effect/unstable/cli";
+import { FetchHttpClient } from "effect/unstable/http";
+import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
+import { Command, Flag, GlobalFlag } from "effect/unstable/cli";
 
-import * as NodeOs from "node:os";
-
+import {
+  ClaudeSessionCoordinator,
+  type OpenClaudeSessionResult,
+} from "../claudeSessions/ClaudeSessionCoordinator.ts";
+import {
+  toClaudeSessionOpenFailure,
+  toClaudeSessionOpenSuccess,
+} from "../claudeSessions/bridge.ts";
+import {
+  defaultClaudeHomePath,
+  makeClaudeSessionCoreLive,
+} from "../claudeSessions/runtimeLayer.ts";
+import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
-import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
+import { ExternalClaudeSessionRepositoryLive } from "../persistence/Layers/ExternalClaudeSessions.ts";
+import { layer as ProviderSessionRuntimeRepositoryLive } from "../persistence/ProviderSessionRuntime.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
-import * as ProviderSessionRuntimeRepo from "../persistence/ProviderSessionRuntime.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import {
+  clearPersistedServerRuntimeState,
+  readPersistedServerRuntimeState,
+} from "../serverRuntimeState.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 
-/**
- * SPIKE: import an existing Claude Code session (~/.claude/projects JSONL)
- * as a t3code thread whose resume cursor points at the original session id.
- * Offline only — run while the server is stopped, then start the server.
- */
-
-interface ParsedClaudeSession {
-  readonly sessionId: string;
-  readonly cwd: string;
-  readonly title: string;
-  readonly userTurnCount: number;
-}
-
-class SessionImportError extends Schema.TaggedErrorClass<SessionImportError>()(
-  "SessionImportError",
-  { reason: Schema.String },
-) {
-  override get message(): string {
-    return this.reason;
-  }
-}
-
-const decodeUnknownJsonString = Schema.decodeUnknownExit(Schema.UnknownFromJsonString);
-
-const parseClaudeSessionJsonl = Effect.fn(function* (jsonlPath: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const raw = yield* fs.readFileString(jsonlPath);
-  let sessionId: string | undefined;
-  let cwd: string | undefined;
-  let title: string | undefined;
-  let userTurnCount = 0;
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    const decoded = decodeUnknownJsonString(line);
-    if (
-      Exit.isFailure(decoded) ||
-      typeof decoded.value !== "object" ||
-      decoded.value === null ||
-      Array.isArray(decoded.value)
-    ) {
-      continue;
-    }
-    const entry = decoded.value as Record<string, unknown>;
-    if (typeof entry.sessionId === "string" && !sessionId) {
-      sessionId = entry.sessionId;
-    }
-    if (entry.type === "user") {
-      userTurnCount += 1;
-      if (typeof entry.cwd === "string" && !cwd) cwd = entry.cwd;
-      if (!title) {
-        const message = entry.message as { content?: unknown } | undefined;
-        const content = message?.content;
-        const text =
-          typeof content === "string"
-            ? content
-            : Array.isArray(content)
-              ? content
-                  .map((c) =>
-                    typeof c === "object" && c !== null && "text" in c
-                      ? String((c as { text: unknown }).text)
-                      : "",
-                  )
-                  .join(" ")
-              : "";
-        const trimmed = text.replace(/\s+/g, " ").trim();
-        if (trimmed.length > 0) {
-          title = trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
-        }
-      }
-    }
-  }
-  if (!sessionId) {
-    return yield* new SessionImportError({ reason: `No sessionId found in ${jsonlPath}` });
-  }
-  if (!cwd) {
-    return yield* new SessionImportError({ reason: `No cwd found in ${jsonlPath}` });
-  }
-  return {
-    sessionId,
-    cwd,
-    title: title ?? `Imported Claude session ${sessionId.slice(0, 8)}`,
-    userTurnCount,
-  } satisfies ParsedClaudeSession;
-});
-
-const resolveJsonlPath = Effect.fn(function* (input: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  if (input.endsWith(".jsonl") && (yield* fs.exists(input))) {
-    return input;
-  }
-  // Treat input as a session id: search ~/.claude/projects/*/<id>.jsonl
-  const claudeProjectsDir = path.join(NodeOs.homedir(), ".claude", "projects");
-  const projectDirs = yield* fs.readDirectory(claudeProjectsDir);
-  for (const dir of projectDirs) {
-    const candidate = path.join(claudeProjectsDir, dir, `${input}.jsonl`);
-    if (yield* fs.exists(candidate)) {
-      return candidate;
-    }
-  }
-  return yield* new SessionImportError({
-    reason: `Could not resolve '${input}' to a JSONL path under ${claudeProjectsDir}`,
-  });
-});
-
-const randomUuid = Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4));
-
-const SessionImportRuntimeLive = Layer.mergeAll(
-  WorkspacePaths.layer,
-  OrchestrationLayerLive.pipe(
+function sessionImportRuntime(claudeHomePath: string) {
+  const orchestrationLayer = OrchestrationLayerLive.pipe(
     Layer.provideMerge(RepositoryIdentityResolver.layer),
-    Layer.provideMerge(ProviderSessionRuntimeRepo.layer),
+    Layer.provideMerge(ProviderSessionRuntimeRepositoryLive),
+    Layer.provideMerge(ExternalClaudeSessionRepositoryLive),
     Layer.provideMerge(SqlitePersistenceLayerLive),
-  ),
+  );
+  const claudeSessionLayer = makeClaudeSessionCoreLive(claudeHomePath).pipe(
+    Layer.provide(orchestrationLayer),
+  );
+
+  return Layer.mergeAll(WorkspacePaths.layer, orchestrationLayer, claudeSessionLayer);
+}
+
+const LIVE_SERVER_TIMEOUT = Duration.seconds(30);
+
+const makeLiveServerClient = (origin: string) =>
+  HttpApiClient.make(EnvironmentHttpApi, { baseUrl: origin });
+
+function isProcessRunning(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return typeof error === "object" && error !== null && "code" in error && error.code === "EPERM";
+  }
+}
+
+const withSessionCliToken = <A, E, R>(
+  environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
+  run: (token: string) => Effect.Effect<A, E, R>,
+) =>
+  Effect.acquireUseRelease(
+    environmentAuth.issueSession({
+      scopes: AuthAdministrativeScopes,
+      label: "t3 session open cli",
+    }),
+    (issued) => run(issued.token),
+    (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
+  );
+
+const withSessionStatusCliToken = <A, E, R>(
+  environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
+  run: (token: string) => Effect.Effect<A, E, R>,
+) =>
+  Effect.acquireUseRelease(
+    environmentAuth.issueSession({
+      scopes: [AuthOrchestrationReadScope],
+      label: "t3 session status cli",
+    }),
+    (issued) => run(issued.token),
+    (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
+  );
+
+const tryOpenClaudeSessionOnLiveServer = Effect.fn("tryOpenClaudeSessionOnLiveServer")(function* (
+  input: {
+    readonly nativeSessionId: string;
+    readonly cwd: string;
+    readonly model: string | undefined;
+  },
+  environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
+  config: ServerConfig.ServerConfig["Service"],
+) {
+  const runtimeState = yield* readPersistedServerRuntimeState(config.serverRuntimeStatePath);
+  if (Option.isNone(runtimeState)) {
+    return Option.none<ClaudeSessionOpenResult>();
+  }
+
+  const attempt = withSessionCliToken(environmentAuth, (token) =>
+    Effect.gen(function* () {
+      const client = yield* makeLiveServerClient(runtimeState.value.origin);
+      return yield* client.orchestration
+        .openClaudeSession({
+          headers: { authorization: `Bearer ${token}` },
+          payload: input,
+        })
+        .pipe(Effect.timeout(LIVE_SERVER_TIMEOUT));
+    }),
+  );
+  const attempted = yield* Effect.result(attempt);
+  if (attempted._tag === "Success") {
+    return Option.some(attempted.success);
+  }
+
+  yield* Effect.logDebug("Failed to connect to the persisted Claude session CLI server.", {
+    origin: runtimeState.value.origin,
+    cause: attempted.failure,
+  });
+  if (isProcessRunning(runtimeState.value.pid)) {
+    return Option.some({
+      ok: false,
+      error: {
+        code: "t3_unavailable",
+        message: "The running T3 server did not accept the Claude session open request.",
+      },
+    } satisfies ClaudeSessionOpenResult);
+  }
+
+  yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+  return Option.none<ClaudeSessionOpenResult>();
+});
+
+const getClaudeSessionStatusFromLiveServer = Effect.fn("getClaudeSessionStatusFromLiveServer")(
+  function* (
+    environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
+    config: ServerConfig.ServerConfig["Service"],
+  ) {
+    const runtimeState = yield* readPersistedServerRuntimeState(config.serverRuntimeStatePath);
+    if (Option.isNone(runtimeState)) {
+      return {
+        ok: false,
+        error: {
+          code: "t3_unavailable",
+          message: "No running T3 server is registered for this environment.",
+        },
+      } satisfies ClaudeSessionAttachmentStatusCliResult;
+    }
+
+    const attempt = withSessionStatusCliToken(environmentAuth, (token) =>
+      Effect.gen(function* () {
+        const client = yield* makeLiveServerClient(runtimeState.value.origin);
+        return yield* client.orchestration
+          .claudeSessionAttachmentStatus({
+            headers: { authorization: `Bearer ${token}` },
+          })
+          .pipe(Effect.timeout(LIVE_SERVER_TIMEOUT));
+      }),
+    );
+    const attempted = yield* Effect.result(attempt);
+    if (attempted._tag === "Success") {
+      return {
+        ok: true,
+        value: attempted.success,
+      } satisfies ClaudeSessionAttachmentStatusCliResult;
+    }
+
+    yield* Effect.logDebug("Failed to query Claude session status from the persisted T3 server.", {
+      origin: runtimeState.value.origin,
+      cause: attempted.failure,
+    });
+    if (!isProcessRunning(runtimeState.value.pid)) {
+      yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+      return {
+        ok: false,
+        error: {
+          code: "t3_unavailable",
+          message: "The registered T3 server is no longer running.",
+        },
+      } satisfies ClaudeSessionAttachmentStatusCliResult;
+    }
+    return {
+      ok: false,
+      error: {
+        code: "request_failed",
+        message: "The running T3 server did not return Claude session attachment status.",
+      },
+    } satisfies ClaudeSessionAttachmentStatusCliResult;
+  },
 );
 
-const sessionImportCommand = Command.make("import", {
+const resumeIdFlag = Flag.string("resume-id").pipe(
+  Flag.withDescription("Native Claude Code session UUID to attach or open."),
+);
+const cwdFlag = Flag.string("cwd").pipe(
+  Flag.withDescription("Absolute working directory verified against the native Claude session."),
+);
+const modelFlag = Flag.string("model").pipe(
+  Flag.withDescription("Claude model id for a newly attached thread."),
+  Flag.optional,
+);
+const claudeHomeFlag = Flag.string("claude-home").pipe(
+  Flag.withDescription(
+    "Claude config home containing projects/ (defaults to CLAUDE_CONFIG_DIR or ~/.claude).",
+  ),
+  Flag.optional,
+);
+const jsonFlag = Flag.boolean("json").pipe(
+  Flag.withDescription("Write the open result as JSON."),
+  Flag.withDefault(false),
+);
+
+export {
+  toClaudeSessionOpenFailure as sessionOpenFailureEnvelope,
+  toClaudeSessionOpenSuccess as sessionOpenSuccessEnvelope,
+} from "../claudeSessions/bridge.ts";
+
+function renderOpenResult(result: OpenClaudeSessionResult, json: boolean): Effect.Effect<void> {
+  if (json) {
+    return Console.log(JSON.stringify(toClaudeSessionOpenSuccess(result)));
+  }
+  return Console.log(
+    [
+      `${result.created ? "Attached" : "Opened"} Claude session ${result.sourceId}`,
+      `  thread: ${result.threadId}`,
+      `  project: ${result.projectId}`,
+      ...(result.sync
+        ? [
+            `  imported items: ${result.sync.importedItemCount}`,
+            `  checkpoint: line ${result.sync.committedLineOrdinal}, byte ${result.sync.committedByteOffset}`,
+            ...(result.sync.hasIncompleteTail
+              ? ["  note: waiting for an incomplete final JSONL line"]
+              : []),
+          ]
+        : [`  source sync requires repair: ${result.syncError ?? "unknown error"}`]),
+    ].join("\n"),
+  );
+}
+
+function renderLiveOpenResult(result: ClaudeSessionOpenResult, json: boolean): Effect.Effect<void> {
+  if (json) {
+    return Console.log(JSON.stringify(result));
+  }
+  if (!result.ok) {
+    return Console.log(`Cannot open Claude session: ${result.error.message}`);
+  }
+  return Console.log(
+    [
+      `${result.value.created ? "Attached" : "Opened"} Claude session through the running T3 server`,
+      `  thread: ${result.value.threadId}`,
+      `  project: ${result.value.projectId}`,
+    ].join("\n"),
+  );
+}
+
+function renderStatusResult(
+  result: ClaudeSessionAttachmentStatusCliResult,
+  json: boolean,
+): Effect.Effect<void> {
+  if (json) {
+    return Console.log(JSON.stringify(result));
+  }
+  if (!result.ok) {
+    return Console.log(`Cannot load Claude session status: ${result.error.message}`);
+  }
+  if (result.value.attachments.length === 0) {
+    return Console.log("No active T3 Claude session attachments.");
+  }
+  return Console.log(
+    result.value.attachments
+      .map(
+        (attachment) =>
+          `${attachment.nativeSessionId}  ${attachment.state}  ${attachment.runtimeStatus ?? "no-runtime"}  ${attachment.threadId}`,
+      )
+      .join("\n"),
+  );
+}
+
+const sessionStatusCommand = Command.make("status", {
   ...projectLocationFlags,
-  source: Argument.string("session").pipe(
-    Argument.withDescription("Claude Code session id or path to its JSONL transcript."),
-  ),
-  model: Flag.string("model").pipe(
-    Flag.withDescription("Claude model id for the imported thread."),
-    Flag.withDefault("claude-opus-4-8"),
-  ),
+  json: jsonFlag,
 }).pipe(
   Command.withDescription(
-    "SPIKE: import an existing Claude Code session as a resumable t3code thread (server must be stopped).",
+    "Read active T3 attachment and provider runtime status for native Claude sessions.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
       const logLevel = yield* GlobalFlag.LogLevel;
       const config = yield* resolveCliAuthConfig(flags, logLevel);
-
-      const path = yield* Path.Path;
-      const jsonlPath = yield* resolveJsonlPath(flags.source);
-      const parsed = yield* parseClaudeSessionJsonl(jsonlPath);
-      yield* Console.log(
-        `Parsed session ${parsed.sessionId}\n  cwd: ${parsed.cwd}\n  title: ${parsed.title}\n  user turns: ${parsed.userTurnCount}`,
-      );
-
-      const runtimeLayer = SessionImportRuntimeLive.pipe(
+      const runtimeLayer = Layer.mergeAll(EnvironmentAuth.runtimeLayer, FetchHttpClient.layer).pipe(
         Layer.provide(ServerConfig.layer(config)),
         Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
       );
+      const result = yield* Effect.gen(function* () {
+        const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        return yield* getClaudeSessionStatusFromLiveServer(environmentAuth, config);
+      }).pipe(Effect.provide(runtimeLayer));
+      return yield* renderStatusResult(result, flags.json);
+    }),
+  ),
+);
 
-      return yield* Effect.gen(function* () {
-        const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-        const snapshot: OrchestrationReadModel = yield* snapshotQuery.getSnapshot();
-        const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-        const runtimeRepo = yield* ProviderSessionRuntimeRepo.ProviderSessionRuntimeRepository;
+const sessionOpenCommand = Command.make("open", {
+  ...projectLocationFlags,
+  resumeId: resumeIdFlag,
+  cwd: cwdFlag,
+  model: modelFlag,
+  claudeHome: claudeHomeFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription(
+    "Attach or open a native Claude Code session, synchronize complete JSONL history, and seed native resume state.",
+  ),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const logLevel = yield* GlobalFlag.LogLevel;
+      const config = yield* resolveCliAuthConfig(flags, logLevel);
+      const configuredClaudeHome = Option.getOrUndefined(flags.claudeHome)?.trim();
+      const claudeHomePath =
+        configuredClaudeHome && configuredClaudeHome.length > 0
+          ? NodePath.resolve(configuredClaudeHome)
+          : defaultClaudeHomePath();
+      const runtimeLayer = Layer.mergeAll(
+        sessionImportRuntime(claudeHomePath),
+        EnvironmentAuth.runtimeLayer,
+        FetchHttpClient.layer,
+      ).pipe(
+        Layer.provide(ServerConfig.layer(config)),
+        Layer.provide(Layer.succeed(References.MinimumLogLevel, config.logLevel)),
+      );
+      const input = {
+        nativeSessionId: flags.resumeId,
+        cwd: flags.cwd,
+        ...(Option.isSome(flags.model) ? { model: flags.model.value } : {}),
+      };
 
-        const nowIso = DateTime.formatIso(yield* DateTime.now);
-
-        // 1. Ensure a project whose workspaceRoot matches the session cwd.
-        let project = snapshot.projects.find(
-          (candidate) => candidate.deletedAt === null && candidate.workspaceRoot === parsed.cwd,
+      const open = Effect.gen(function* () {
+        const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const liveResult = yield* tryOpenClaudeSessionOnLiveServer(
+          {
+            nativeSessionId: input.nativeSessionId,
+            cwd: input.cwd,
+            model: input.model,
+          },
+          environmentAuth,
+          config,
         );
-        if (!project) {
-          const projectId = ProjectId.make(yield* randomUuid);
-          yield* orchestrationEngine.dispatch({
-            type: "project.create",
-            commandId: CommandId.make(yield* randomUuid),
-            projectId,
-            title: path.basename(parsed.cwd),
-            workspaceRoot: parsed.cwd,
-            createdAt: nowIso,
-          });
-          yield* Console.log(`Created project ${projectId} for ${parsed.cwd}`);
-          project = { id: projectId } as (typeof snapshot.projects)[number];
-        } else {
-          yield* Console.log(`Reusing project ${project.id} (${parsed.cwd})`);
+        if (Option.isSome(liveResult)) {
+          return yield* renderLiveOpenResult(liveResult.value, flags.json);
         }
 
-        // 2. Create the thread.
-        const threadId = ThreadId.make(yield* randomUuid);
-        const providerInstanceId = ProviderInstanceId.make("claudeAgent");
-        yield* orchestrationEngine.dispatch({
-          type: "thread.create",
-          commandId: CommandId.make(yield* randomUuid),
-          threadId,
-          projectId: project.id,
-          title: `[imported] ${parsed.title}`,
-          modelSelection: {
-            instanceId: providerInstanceId,
-            model: flags.model,
-          },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: null,
-          createdAt: nowIso,
-        });
-        yield* Console.log(`Created thread ${threadId}`);
-
-        // 3. Seed the provider session runtime so the first turn resumes the
-        //    original Claude Code session.
-        yield* runtimeRepo.upsert({
-          threadId,
-          providerName: "claudeAgent",
-          providerInstanceId,
-          adapterKey: "claudeAgent",
-          runtimeMode: "full-access",
-          status: "stopped",
-          lastSeenAt: nowIso,
-          resumeCursor: {
-            threadId,
-            resume: parsed.sessionId,
-            turnCount: parsed.userTurnCount,
-          },
-          runtimePayload: null,
-        });
-        yield* Console.log(
-          `Seeded resume cursor -> claude session ${parsed.sessionId}. Start the server and send a message in this thread to continue the session.`,
-        );
+        const coordinator = yield* ClaudeSessionCoordinator;
+        const result = yield* coordinator.open(input);
+        return yield* renderOpenResult(result, flags.json);
       }).pipe(Effect.provide(runtimeLayer));
+
+      if (!flags.json) {
+        return yield* open;
+      }
+      return yield* open.pipe(
+        Effect.catch((error) => Console.log(JSON.stringify(toClaudeSessionOpenFailure(error)))),
+      );
     }),
   ),
 );
 
 export const sessionCommand = Command.make("session").pipe(
-  Command.withDescription("Session utilities (spike)."),
-  Command.withSubcommands([sessionImportCommand]),
+  Command.withDescription("Native Claude session utilities."),
+  Command.withSubcommands([sessionOpenCommand, sessionStatusCommand]),
 );

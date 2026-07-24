@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFSP from "node:fs/promises";
+
 /**
  * ProviderServiceLive - Cross-provider orchestration layer.
  *
@@ -35,6 +38,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as Stream from "effect/Stream";
 
+import { ExternalClaudeSessionRepository } from "../../persistence/Services/ExternalClaudeSessions.ts";
 import {
   increment,
   providerMetricAttributes,
@@ -212,8 +216,59 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistry;
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+  const externalClaudeSessionRepository = yield* Effect.serviceOption(
+    ExternalClaudeSessionRepository,
+  );
   const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+  const validateExternalClaudeContinuation = Effect.fn(
+    "ProviderService.validateExternalClaudeContinuation",
+  )(function* (input: { readonly threadId: ThreadId; readonly effectiveCwd: string | undefined }) {
+    if (Option.isNone(externalClaudeSessionRepository)) {
+      return;
+    }
+    const source = yield* externalClaudeSessionRepository.value
+      .getSourceByThreadId(input.threadId)
+      .pipe(
+        Effect.mapError((cause) =>
+          toValidationError(
+            "ProviderService.startSession",
+            "Cannot validate the attached Claude session source.",
+            cause,
+          ),
+        ),
+      );
+    if (Option.isNone(source)) {
+      return;
+    }
+    if (source.value.state === "failed" || source.value.state === "desynced") {
+      return yield* toValidationError(
+        "ProviderService.startSession",
+        `Attached Claude session source is ${source.value.state}; synchronize or repair it before continuing.`,
+      );
+    }
+    if (input.effectiveCwd !== source.value.sourceCwd) {
+      return yield* toValidationError(
+        "ProviderService.startSession",
+        "Native Claude continuation working directory does not match the verified source working directory.",
+      );
+    }
+    const canonicalSourceCwd = yield* Effect.tryPromise({
+      try: () => NodeFSP.realpath(source.value.sourceCwd),
+      catch: (cause) =>
+        toValidationError(
+          "ProviderService.startSession",
+          "Attached Claude session working directory no longer exists.",
+          cause,
+        ),
+    });
+    if (canonicalSourceCwd !== source.value.sourceCwd) {
+      return yield* toValidationError(
+        "ProviderService.startSession",
+        "Attached Claude session working directory no longer matches its verified canonical path.",
+      );
+    }
+  });
   const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
     McpSessionRegistry.issueActiveMcpCredential({ threadId, providerInstanceId }).pipe(
       Effect.tap((credential) =>
@@ -570,6 +625,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           (persistedBinding?.providerInstanceId === resolvedInstanceId
             ? readPersistedCwd(persistedBinding.runtimePayload)
             : undefined);
+        yield* validateExternalClaudeContinuation({ threadId, effectiveCwd });
         yield* Effect.annotateCurrentSpan({
           "provider.kind": resolvedProvider,
           "provider.resume_cursor.source":

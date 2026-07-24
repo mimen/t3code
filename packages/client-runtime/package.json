@@ -51,6 +51,10 @@
       "types": "./src/state/connections.ts",
       "default": "./src/state/connections.ts"
     },
+    "./state/claude-sessions": {
+      "types": "./src/state/claudeSessions.ts",
+      "default": "./src/state/claudeSessions.ts"
+    },
     "./state/entities": {
       "types": "./src/state/entities.ts",
       "default": "./src/state/entities.ts"

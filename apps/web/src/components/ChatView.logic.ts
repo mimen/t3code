@@ -1,5 +1,6 @@
 import {
   type EnvironmentId,
+  type ExternalSessionSyncState,
   isProviderDriverKind,
   ProjectId,
   type ModelSelection,
@@ -26,6 +27,12 @@ export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 export const MAX_HIDDEN_MOUNTED_PREVIEW_THREADS = 3;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
+
+export function externalSessionBlocksComposer(
+  state: ExternalSessionSyncState | null | undefined,
+): boolean {
+  return state === "failed" || state === "desynced";
+}
 
 export function buildLocalDraftThread(
   threadId: ThreadId,

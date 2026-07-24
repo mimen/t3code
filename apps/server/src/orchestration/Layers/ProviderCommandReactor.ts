@@ -511,6 +511,17 @@ const make = Effect.gen(function* () {
         });
       });
 
+    if (
+      thread.externalSession?.state === "failed" ||
+      thread.externalSession?.state === "desynced"
+    ) {
+      return yield* new ProviderAdapterRequestError({
+        provider: providerErrorLabel(preferredProvider),
+        method: "thread.turn.start",
+        detail: `Attached Claude session source is ${thread.externalSession.state}; synchronize or repair it before continuing.`,
+      });
+    }
+
     const existingSessionThreadId =
       thread.session && thread.session.status !== "stopped" && activeSession ? thread.id : null;
     if (existingSessionThreadId) {

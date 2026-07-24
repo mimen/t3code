@@ -63,6 +63,11 @@ import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
+import { ClaudeSessionCatalog } from "./claudeSessions/ClaudeSessionCatalog.ts";
+import { ClaudeSessionCoordinator } from "./claudeSessions/ClaudeSessionCoordinator.ts";
+import { ClaudeSessionFocus } from "./claudeSessions/ClaudeSessionFocus.ts";
+import { ClaudeSessionStatus } from "./claudeSessions/ClaudeSessionStatus.ts";
+import { toClaudeSessionOpenFailure, toClaudeSessionOpenSuccess } from "./claudeSessions/bridge.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -261,7 +266,10 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
       | "thread.activity-appended"
       | "thread.turn-diff-completed"
       | "thread.reverted"
-      | "thread.session-set";
+      | "thread.session-set"
+      | "thread.external-session-attached"
+      | "thread.external-session-sync-state-updated"
+      | "thread.external-history-imported";
   }
 > {
   return (
@@ -270,7 +278,10 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
     event.type === "thread.activity-appended" ||
     event.type === "thread.turn-diff-completed" ||
     event.type === "thread.reverted" ||
-    event.type === "thread.session-set"
+    event.type === "thread.session-set" ||
+    event.type === "thread.external-session-attached" ||
+    event.type === "thread.external-session-sync-state-updated" ||
+    event.type === "thread.external-history-imported"
   );
 }
 
@@ -284,6 +295,11 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [ORCHESTRATION_WS_METHODS.subscribeShell, AuthOrchestrationReadScope],
   [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot, AuthOrchestrationReadScope],
   [ORCHESTRATION_WS_METHODS.subscribeThread, AuthOrchestrationReadScope],
+  [ORCHESTRATION_WS_METHODS.listClaudeSessions, AuthOrchestrationReadScope],
+  [ORCHESTRATION_WS_METHODS.previewClaudeSession, AuthOrchestrationReadScope],
+  [ORCHESTRATION_WS_METHODS.openClaudeSession, AuthOrchestrationOperateScope],
+  [ORCHESTRATION_WS_METHODS.syncClaudeSession, AuthOrchestrationOperateScope],
+  [ORCHESTRATION_WS_METHODS.getThreadTimelinePage, AuthOrchestrationReadScope],
   [WS_METHODS.serverProbe, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetConfig, AuthOrchestrationReadScope],
   [WS_METHODS.serverRefreshProviders, AuthOrchestrationOperateScope],
@@ -398,6 +414,10 @@ const makeWsRpcLayer = (
       const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const claudeSessionCatalog = yield* Effect.serviceOption(ClaudeSessionCatalog);
+      const claudeSessionCoordinator = yield* Effect.serviceOption(ClaudeSessionCoordinator);
+      const claudeSessionFocus = yield* Effect.serviceOption(ClaudeSessionFocus);
+      const claudeSessionStatus = yield* Effect.serviceOption(ClaudeSessionStatus);
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -945,6 +965,123 @@ const makeWsRpcLayer = (
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
       return WsRpcGroup.of({
+        [ORCHESTRATION_WS_METHODS.listClaudeSessions]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.listClaudeSessions,
+            Effect.gen(function* () {
+              if (Option.isNone(claudeSessionCatalog) || Option.isNone(claudeSessionStatus)) {
+                return yield* new OrchestrationGetSnapshotError({
+                  message: "Claude Code session support is unavailable in this T3 server.",
+                });
+              }
+              const page = yield* claudeSessionCatalog.value.listSessions(input);
+              return yield* claudeSessionStatus.value.joinCataloguePage(page);
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationGetSnapshotError({
+                    message: "Failed to list Claude Code sessions",
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.previewClaudeSession]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.previewClaudeSession,
+            Effect.gen(function* () {
+              if (Option.isNone(claudeSessionCatalog)) {
+                return yield* new OrchestrationGetSnapshotError({
+                  message: "Claude Code session support is unavailable in this T3 server.",
+                });
+              }
+              return yield* claudeSessionCatalog.value.previewSession(
+                input.nativeSessionId,
+                input.cwd,
+              );
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationGetSnapshotError({
+                    message: "Failed to preview Claude Code session",
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.openClaudeSession]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.openClaudeSession,
+            Option.match(claudeSessionCoordinator, {
+              onNone: () =>
+                Effect.succeed(
+                  toClaudeSessionOpenFailure({
+                    operation: "session-service",
+                    message: "Claude session support is unavailable in this T3 server.",
+                  }),
+                ),
+              onSome: (coordinator) =>
+                coordinator
+                  .open({
+                    nativeSessionId: input.nativeSessionId,
+                    cwd: input.cwd,
+                    ...(input.model === undefined ? {} : { model: input.model }),
+                  })
+                  .pipe(
+                    Effect.map(toClaudeSessionOpenSuccess),
+                    Effect.catch((error) => Effect.succeed(toClaudeSessionOpenFailure(error))),
+                  ),
+            }),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.syncClaudeSession]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.syncClaudeSession,
+            Option.match(claudeSessionCoordinator, {
+              onNone: () =>
+                Effect.fail(
+                  new OrchestrationDispatchCommandError({
+                    message: "Claude session support is unavailable in this T3 server.",
+                  }),
+                ),
+              onSome: (coordinator) =>
+                coordinator.sync(input.sourceId).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new OrchestrationDispatchCommandError({
+                        message: "Failed to synchronize Claude Code session",
+                        cause,
+                      }),
+                  ),
+                ),
+            }),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.getThreadTimelinePage]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getThreadTimelinePage,
+            projectionSnapshotQuery.getThreadTimelinePage(input).pipe(
+              Effect.flatMap(
+                Option.match({
+                  onNone: () =>
+                    new OrchestrationGetSnapshotError({
+                      message: "Thread timeline was not found",
+                    }),
+                  onSome: Effect.succeed,
+                }),
+              ),
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationGetSnapshotError({
+                    message: "Failed to load thread timeline",
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,
@@ -1066,12 +1203,23 @@ const makeWsRpcLayer = (
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeShell,
             Effect.gen(function* () {
-              const liveStream = orchestrationEngine.streamDomainEvents.pipe(
+              const orchestrationLiveStream = orchestrationEngine.streamDomainEvents.pipe(
                 Stream.mapEffect(toShellStreamEvent),
                 Stream.flatMap((event) =>
                   Option.isSome(event) ? Stream.succeed(event.value) : Stream.empty,
                 ),
               );
+              const focusLiveStream = Option.match(claudeSessionFocus, {
+                onNone: () => Stream.empty,
+                onSome: (focus) =>
+                  focus.streamFocusRequests.pipe(
+                    Stream.map((request) => ({
+                      kind: "thread-focus-requested" as const,
+                      request,
+                    })),
+                  ),
+              });
+              const liveStream = Stream.merge(orchestrationLiveStream, focusLiveStream);
 
               // When the client already holds a shell snapshot (cached, or loaded
               // over HTTP) it passes that snapshot's sequence, and we resume by

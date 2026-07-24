@@ -59,6 +59,7 @@ function threadDetailToShell(
     updatedAt: thread.updatedAt,
     archivedAt: thread.archivedAt,
     session: thread.session,
+    ...(thread.externalSession === undefined ? {} : { externalSession: thread.externalSession }),
     latestUserMessageAt: latestUserMessageAt(thread),
     hasPendingApprovals: false,
     hasPendingUserInput: false,

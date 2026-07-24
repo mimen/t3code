@@ -63,6 +63,7 @@ export type WorkLogToolLifecycleStatus =
 export interface WorkLogEntry {
   id: string;
   createdAt: string;
+  timelineOrderKey?: string;
   turnId?: TurnId | null;
   label: string;
   detail?: string;
@@ -124,18 +125,21 @@ export type TimelineEntry =
       id: string;
       kind: "message";
       createdAt: string;
+      timelineOrderKey?: string;
       message: ChatMessage;
     }
   | {
       id: string;
       kind: "proposed-plan";
       createdAt: string;
+      timelineOrderKey?: string;
       proposedPlan: ProposedPlan;
     }
   | {
       id: string;
       kind: "work";
       createdAt: string;
+      timelineOrderKey?: string;
       entry: WorkLogEntry;
     };
 
@@ -707,6 +711,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
+    ...(activity.timelineOrderKey === undefined
+      ? {}
+      : { timelineOrderKey: activity.timelineOrderKey }),
     turnId: activity.turnId,
     label: taskLabel || activity.summary,
     tone:
@@ -1315,6 +1322,15 @@ function compareActivitiesByOrder(
     return createdAtComparison;
   }
 
+  if (left.timelineOrderKey !== undefined || right.timelineOrderKey !== undefined) {
+    const timelineOrderComparison = (left.timelineOrderKey ?? left.id).localeCompare(
+      right.timelineOrderKey ?? right.id,
+    );
+    if (timelineOrderComparison !== 0) {
+      return timelineOrderComparison;
+    }
+  }
+
   const lifecycleRankComparison =
     compareActivityLifecycleRank(left.kind) - compareActivityLifecycleRank(right.kind);
   if (lifecycleRankComparison !== 0) {
@@ -1346,6 +1362,9 @@ export function deriveTimelineEntries(
     id: message.id,
     kind: "message",
     createdAt: message.createdAt,
+    ...(message.timelineOrderKey === undefined
+      ? {}
+      : { timelineOrderKey: message.timelineOrderKey }),
     message,
   }));
   const proposedPlanRows: TimelineEntry[] = proposedPlans.map((proposedPlan) => ({
@@ -1358,10 +1377,13 @@ export function deriveTimelineEntries(
     id: entry.id,
     kind: "work",
     createdAt: entry.createdAt,
+    ...(entry.timelineOrderKey === undefined ? {} : { timelineOrderKey: entry.timelineOrderKey }),
     entry,
   }));
-  return [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) =>
-    a.createdAt.localeCompare(b.createdAt),
+  return [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) ||
+      (left.timelineOrderKey ?? left.id).localeCompare(right.timelineOrderKey ?? right.id),
   );
 }
 

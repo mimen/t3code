@@ -58,6 +58,7 @@ export function mergeEnvironmentThread(
     updatedAt: shell.updatedAt,
     archivedAt: shell.archivedAt,
     session: shell.session,
+    ...(shell.externalSession === undefined ? {} : { externalSession: shell.externalSession }),
   };
 }
 

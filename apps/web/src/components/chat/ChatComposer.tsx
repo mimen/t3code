@@ -464,6 +464,7 @@ export interface ChatComposerProps {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
   } | null;
+  externalSessionBlocked: boolean;
 
   // Pending approvals / inputs
   activePendingApproval: PendingApproval | null;
@@ -572,6 +573,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isSendBusy,
     isPreparingWorktree,
     environmentUnavailable,
+    externalSessionBlocked,
     activePendingApproval,
     pendingApprovals,
     pendingUserInputs,
@@ -623,6 +625,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setThreadError,
     onExpandImage,
   } = props;
+  const isComposerUnavailable = environmentUnavailable !== null || externalSessionBlocked;
 
   // ------------------------------------------------------------------
   // Store subscriptions (prompt / images / terminal contexts)
@@ -1155,6 +1158,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isSendBusy ||
     isConnecting ||
     projectSelectionRequired ||
+    externalSessionBlocked ||
     !composerSendState.hasSendableContent;
   const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
@@ -1948,7 +1952,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           isComposerApprovalState ||
           pendingUserInputs.length > 0 ||
           projectSelectionRequired ||
-          (environmentUnavailable !== null && activePendingProgress === null)
+          (isComposerUnavailable && activePendingProgress === null)
         ) {
           return false;
         }
@@ -2094,7 +2098,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           className={cn(
             "chat-composer-glass rounded-[20px] border transition-[background-color] duration-200 has-focus-visible:border-ring/45",
             isDragOverComposer ? "border-primary/70 bg-accent/45" : "border-border",
-            environmentUnavailable || projectSelectionRequired ? "opacity-75" : null,
+            isComposerUnavailable || projectSelectionRequired ? "opacity-75" : null,
             composerProviderState.composerSurfaceClassName,
           )}
           onFocusCapture={(event) => {
@@ -2206,9 +2210,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       promptHasText={false}
                       isSendBusy={isSendBusy}
                       isConnecting={isConnecting}
-                      isEnvironmentUnavailable={
-                        environmentUnavailable !== null || projectSelectionRequired
-                      }
+                      isEnvironmentUnavailable={isComposerUnavailable || projectSelectionRequired}
                       isPreparingWorktree={false}
                       hasSendableContent={false}
                       preserveComposerFocusOnPointerDown
@@ -2444,19 +2446,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         ? "Add feedback to refine the plan, or leave this blank to implement it"
                         : projectSelectionRequired
                           ? "Choose a project above to start a thread"
-                          : environmentUnavailable
-                            ? `${environmentUnavailable.label}: ${connectionStatusText(
-                                environmentUnavailable.connection,
-                              )}`
-                            : phase === "disconnected"
-                              ? "Ask for follow-up changes or attach images"
-                              : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                          : externalSessionBlocked
+                            ? "Resolve the Claude Code source issue above before sending a turn"
+                            : environmentUnavailable
+                              ? `${environmentUnavailable.label}: ${connectionStatusText(
+                                  environmentUnavailable.connection,
+                                )}`
+                              : phase === "disconnected"
+                                ? "Ask for follow-up changes or attach images"
+                                : "Ask anything, @tag files/folders, $use skills, or / for commands"
                 }
                 disabled={
                   isConnecting ||
                   isComposerApprovalState ||
                   projectSelectionRequired ||
-                  (environmentUnavailable !== null && activePendingProgress === null)
+                  (isComposerUnavailable && activePendingProgress === null)
                 }
               />
               {showMobilePendingAnswerActions ? (
@@ -2472,9 +2476,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     promptHasText={false}
                     isSendBusy={isSendBusy}
                     isConnecting={isConnecting}
-                    isEnvironmentUnavailable={
-                      environmentUnavailable !== null || projectSelectionRequired
-                    }
+                    isEnvironmentUnavailable={isComposerUnavailable || projectSelectionRequired}
                     isPreparingWorktree={false}
                     hasSendableContent={false}
                     preserveComposerFocusOnPointerDown
@@ -2585,9 +2587,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   promptHasText={prompt.trim().length > 0}
                   isSendBusy={isSendBusy}
                   isConnecting={isConnecting}
-                  isEnvironmentUnavailable={
-                    environmentUnavailable !== null || projectSelectionRequired
-                  }
+                  isEnvironmentUnavailable={isComposerUnavailable || projectSelectionRequired}
                   isPreparingWorktree={isPreparingWorktree}
                   hasSendableContent={composerSendState.hasSendableContent}
                   preserveComposerFocusOnPointerDown={isMobileViewport}

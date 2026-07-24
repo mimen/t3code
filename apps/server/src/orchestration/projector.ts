@@ -26,6 +26,9 @@ import {
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
+  ThreadExternalSessionAttachedPayload,
+  ThreadExternalHistoryImportedPayload,
+  ThreadExternalSessionSyncStateUpdatedPayload,
 } from "./Schemas.ts";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
@@ -87,6 +90,10 @@ function retainThreadMessagesAfterRevert(
 ): ReadonlyArray<OrchestrationMessage> {
   const retainedMessageIds = new Set<string>();
   for (const message of messages) {
+    if (message.provenance?.origin === "claude-code-jsonl") {
+      retainedMessageIds.add(message.id);
+      continue;
+    }
     if (message.role === "system") {
       retainedMessageIds.add(message.id);
       continue;
@@ -97,7 +104,10 @@ function retainThreadMessagesAfterRevert(
   }
 
   const retainedUserCount = messages.filter(
-    (message) => message.role === "user" && retainedMessageIds.has(message.id),
+    (message) =>
+      message.role === "user" &&
+      message.provenance?.origin !== "claude-code-jsonl" &&
+      retainedMessageIds.has(message.id),
   ).length;
   const missingUserCount = Math.max(0, turnCount - retainedUserCount);
   if (missingUserCount > 0) {
@@ -119,7 +129,10 @@ function retainThreadMessagesAfterRevert(
   }
 
   const retainedAssistantCount = messages.filter(
-    (message) => message.role === "assistant" && retainedMessageIds.has(message.id),
+    (message) =>
+      message.role === "assistant" &&
+      message.provenance?.origin !== "claude-code-jsonl" &&
+      retainedMessageIds.has(message.id),
   ).length;
   const missingAssistantCount = Math.max(0, turnCount - retainedAssistantCount);
   if (missingAssistantCount > 0) {
@@ -159,6 +172,12 @@ function retainThreadProposedPlansAfterRevert(
   return proposedPlans.filter(
     (proposedPlan) => proposedPlan.turnId === null || retainedTurnIds.has(proposedPlan.turnId),
   );
+}
+
+function compareThreadMessages(left: OrchestrationMessage, right: OrchestrationMessage): number {
+  const leftKey = left.timelineOrderKey ?? `${left.createdAt}:${left.id}`;
+  const rightKey = right.timelineOrderKey ?? `${right.createdAt}:${right.id}`;
+  return leftKey.localeCompare(rightKey) || left.id.localeCompare(right.id);
 }
 
 function compareThreadActivities(
@@ -402,6 +421,7 @@ export function projectEvent(
             ...(payload.attachments !== undefined ? { attachments: payload.attachments } : {}),
             turnId: payload.turnId,
             streaming: payload.streaming,
+            provenance: { origin: "t3" },
             createdAt: payload.createdAt,
             updatedAt: payload.updatedAt,
           },
@@ -436,6 +456,83 @@ export function projectEvent(
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             messages: cappedMessages,
+            updatedAt: event.occurredAt,
+          }),
+        };
+      });
+
+    case "thread.external-session-attached":
+      return decodeForEvent(
+        ThreadExternalSessionAttachedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            externalSession: payload.externalSession,
+            updatedAt: event.occurredAt,
+          }),
+        })),
+      );
+
+    case "thread.external-session-sync-state-updated":
+      return decodeForEvent(
+        ThreadExternalSessionSyncStateUpdatedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            externalSession: payload.externalSession,
+            updatedAt: event.occurredAt,
+          }),
+        })),
+      );
+
+    case "thread.external-history-imported":
+      return Effect.gen(function* () {
+        const payload = yield* decodeForEvent(
+          ThreadExternalHistoryImportedPayload,
+          event.payload,
+          event.type,
+          "payload",
+        );
+        const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+        if (!thread) {
+          return nextBase;
+        }
+
+        const messages = [...thread.messages];
+        const activities = [...thread.activities];
+        for (const item of payload.items) {
+          if (item.kind === "message") {
+            const message = item.message;
+            const index = messages.findIndex((entry) => entry.id === message.id);
+            if (index >= 0) {
+              messages[index] = message;
+            } else {
+              messages.push(message);
+            }
+          } else {
+            const activity = item.activity;
+            const index = activities.findIndex((entry) => entry.id === activity.id);
+            if (index >= 0) {
+              activities[index] = activity;
+            } else {
+              activities.push(activity);
+            }
+          }
+        }
+
+        return {
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            messages: messages.toSorted(compareThreadMessages).slice(-MAX_THREAD_MESSAGES),
+            activities: activities.toSorted(compareThreadActivities).slice(-500),
             updatedAt: event.occurredAt,
           }),
         };
@@ -677,7 +774,10 @@ export function projectEvent(
 
           const activities = [
             ...thread.activities.filter((entry) => entry.id !== payload.activity.id),
-            payload.activity,
+            {
+              ...payload.activity,
+              provenance: payload.activity.provenance ?? { origin: "t3" },
+            },
           ]
             .toSorted(compareThreadActivities)
             .slice(-500);

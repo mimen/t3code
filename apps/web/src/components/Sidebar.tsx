@@ -126,6 +126,7 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { ClaudeSessionBrowserDialog } from "./ClaudeSessionBrowserDialog";
 import { SidebarStageBackdrop, resolveSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { Kbd } from "./ui/kbd";
 import {
@@ -3161,6 +3162,7 @@ export default function Sidebar() {
   const shortcutModifiers = useShortcutModifierState();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const [isClaudeSessionBrowserOpen, setIsClaudeSessionBrowserOpen] = useState(false);
   const environmentLabelById = useMemo(
     () =>
       new Map(
@@ -3715,6 +3717,10 @@ export default function Sidebar() {
         <SidebarThreadDetailPrewarmer key={scopedThreadKey(threadRef)} threadRef={threadRef} />
       ))}
       <SidebarChromeHeader isElectron={isElectron} />
+      <ClaudeSessionBrowserDialog
+        open={isClaudeSessionBrowserOpen}
+        onOpenChange={setIsClaudeSessionBrowserOpen}
+      />
 
       {isOnSettings ? (
         <SettingsSidebarNav pathname={pathname} />
@@ -3759,6 +3765,20 @@ export default function Sidebar() {
           />
 
           <SidebarSeparator />
+          <SidebarGroup className="px-2 py-1">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+                  onClick={() => setIsClaudeSessionBrowserOpen(true)}
+                >
+                  <TerminalIcon className="size-3.5" />
+                  <span className="text-xs">Claude sessions</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
           <SidebarChromeFooter />
         </>
       )}

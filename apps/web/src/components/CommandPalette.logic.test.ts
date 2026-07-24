@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  type ClaudeSessionCatalogEntry,
+} from "@t3tools/contracts";
+import type { FederatedClaudeSession } from "../claudeSessionSurfaces.logic";
 import type { Thread } from "../types";
 import {
+  buildClaudeSessionActionItems,
+  buildClaudeSessionSwitcherQueries,
+  buildRootGroups,
   buildThreadActionItems,
   filterCommandPaletteGroups,
   type CommandPaletteGroup,
@@ -34,6 +44,90 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     ...overrides,
   };
 }
+
+function makeClaudeSession(): FederatedClaudeSession {
+  const session: ClaudeSessionCatalogEntry = {
+    providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+    localSourceHost: "mini",
+    nativeSessionId: "123e4567-e89b-42d3-a456-426614174000",
+    sourceCwd: "/workspace/t3code",
+    projectRoot: "/workspace/t3code",
+    projectName: "t3code",
+    title: "Federated session catalogue",
+    titleSource: "native",
+    branch: "spike/session-import",
+    firstActivityAt: "2026-07-20T10:00:00.000Z",
+    latestActivityAt: "2026-07-20T11:00:00.000Z",
+    messageCount: 12,
+    observedSize: 100,
+    observedMtimeMs: 200,
+  };
+  return {
+    environmentId: EnvironmentId.make("environment-mini"),
+    environmentLabel: "Mac mini",
+    session,
+  };
+}
+
+describe("buildClaudeSessionSwitcherQueries", () => {
+  it("loads recent sessions when the search matches an environment label", () => {
+    const miniEnvironmentId = EnvironmentId.make("environment-mini");
+    const laptopEnvironmentId = EnvironmentId.make("environment-laptop");
+    const queries = buildClaudeSessionSwitcherQueries({
+      environments: [
+        { environmentId: miniEnvironmentId, label: "Mac mini" },
+        { environmentId: laptopEnvironmentId, label: "Laptop" },
+      ],
+      filters: {
+        query: "  mac MINI ",
+        activityWindow: "30d",
+        sort: "nativeActivity",
+        limit: 6,
+      },
+    });
+
+    expect(queries.get(miniEnvironmentId)).not.toHaveProperty("query");
+    expect(queries.get(laptopEnvironmentId)).toMatchObject({ query: "mac MINI" });
+  });
+});
+
+describe("buildClaudeSessionActionItems", () => {
+  it("keeps environment ownership in the switcher action and only runs its opener", async () => {
+    const session = makeClaudeSession();
+    const runSession = vi.fn(async () => undefined);
+    const [item] = buildClaudeSessionActionItems({
+      sessions: [session],
+      icon: null,
+      runSession,
+    });
+
+    expect(item?.value).toContain("environment-mini");
+    expect(item?.description).toContain("Mac mini");
+    expect(item?.description).toContain("/workspace/t3code");
+    await item?.run();
+    expect(runSession).toHaveBeenCalledTimes(1);
+    expect(runSession).toHaveBeenCalledWith(session);
+  });
+
+  it("adds native sessions to a dedicated root switcher group", () => {
+    const [sessionItem] = buildClaudeSessionActionItems({
+      sessions: [makeClaudeSession()],
+      icon: null,
+      runSession: async () => undefined,
+    });
+
+    const groups = buildRootGroups({
+      actionItems: [],
+      recentThreadItems: [],
+      claudeSessionItems: sessionItem ? [sessionItem] : [],
+    });
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.value).toBe("claude-sessions");
+    expect(groups[0]?.label).toBe("Native Claude Sessions");
+    expect(groups[0]?.items).toEqual(sessionItem ? [sessionItem] : []);
+  });
+});
 
 describe("buildThreadActionItems", () => {
   it("orders threads by most recent activity and formats timestamps from updatedAt", () => {

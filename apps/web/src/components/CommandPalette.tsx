@@ -27,6 +27,7 @@ import {
   CornerLeftUpIcon,
   FolderIcon,
   FolderPlusIcon,
+  HistoryIcon,
   LinkIcon,
   MessageSquareIcon,
   SettingsIcon,
@@ -45,10 +46,16 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue } from "@effect/atom-react";
+import {
+  CLAUDE_SESSION_SWITCHER_LIMIT,
+  presentClaudeSessionAttachment,
+} from "../claudeSessionSurfaces.logic";
 import { OpenAddProjectCommandPaletteProvider } from "../commandPaletteContext";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
+import { useClaudeSessionCatalogue } from "../hooks/useClaudeSessionCatalogue";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useOpenClaudeSession } from "../hooks/useOpenClaudeSession";
 import { useClientSettings } from "../hooks/useSettings";
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
@@ -93,6 +100,8 @@ import {
 import {
   ADDON_ICON_CLASS,
   buildBrowseGroups,
+  buildClaudeSessionActionItems,
+  buildClaudeSessionSwitcherQueries,
   buildProjectActionItems,
   buildRootGroups,
   buildThreadActionItems,
@@ -107,6 +116,7 @@ import {
   RECENT_THREAD_LIMIT,
 } from "./CommandPalette.logic";
 import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
+import { ClaudeSessionBrowserDialog } from "./ClaudeSessionBrowserDialog";
 import { CommandPaletteResults } from "./CommandPaletteResults";
 import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "./Icons";
 import { ProjectFavicon } from "./ProjectFavicon";
@@ -377,6 +387,11 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const toggleOpen = useCallback(() => dispatch({ _tag: "Toggle" }), []);
   const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
+  const [isClaudeSessionBrowserOpen, setIsClaudeSessionBrowserOpen] = useState(false);
+  const openClaudeSessionBrowser = useCallback(() => {
+    setOpen(false);
+    setIsClaudeSessionBrowserOpen(true);
+  }, [setOpen]);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
   const routeTarget = useParams({
@@ -399,7 +414,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           terminalOpen,
         },
       });
-      if (command !== "commandPalette.toggle") {
+      if (command !== "commandPalette.toggle" || isClaudeSessionBrowserOpen) {
         return;
       }
       event.preventDefault();
@@ -408,7 +423,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, terminalOpen, toggleOpen]);
+  }, [isClaudeSessionBrowserOpen, keybindings, terminalOpen, toggleOpen]);
 
   return (
     <OpenAddProjectCommandPaletteProvider openAddProject={openAddProject}>
@@ -420,8 +435,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
             openIntent={state.openIntent}
             setOpen={setOpen}
             clearOpenIntent={clearOpenIntent}
+            openClaudeSessionBrowser={openClaudeSessionBrowser}
           />
         </CommandDialog>
+        <ClaudeSessionBrowserDialog
+          open={isClaudeSessionBrowserOpen}
+          onOpenChange={setIsClaudeSessionBrowserOpen}
+        />
       </ComposerHandleContext>
     </OpenAddProjectCommandPaletteProvider>
   );
@@ -432,6 +452,7 @@ function CommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly clearOpenIntent: () => void;
+  readonly openClaudeSessionBrowser: () => void;
 }) {
   if (!props.open) {
     return null;
@@ -442,6 +463,7 @@ function CommandPaletteDialog(props: {
       openIntent={props.openIntent}
       setOpen={props.setOpen}
       clearOpenIntent={props.clearOpenIntent}
+      openClaudeSessionBrowser={props.openClaudeSessionBrowser}
     />
   );
 }
@@ -450,9 +472,10 @@ function OpenCommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly clearOpenIntent: () => void;
+  readonly openClaudeSessionBrowser: () => void;
 }) {
   const navigate = useNavigate();
-  const { clearOpenIntent, openIntent, setOpen } = props;
+  const { clearOpenIntent, openClaudeSessionBrowser, openIntent, setOpen } = props;
   const composerHandleRef = useComposerHandleContext();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -565,6 +588,31 @@ function OpenCommandPaletteDialog(props: {
   const isBrowsing =
     !isRemoteProjectRepositoryStep && isFilesystemBrowseQuery(query, browseEnvironmentPlatform);
   const paletteMode = getCommandPaletteMode({ currentView, isBrowsing });
+  const claudeSessionSwitcherEnabled =
+    currentView === null && !isBrowsing && !isActionsOnly && addProjectCloneFlow === null;
+  const claudeSessionQueriesByEnvironment = useMemo(
+    () =>
+      buildClaudeSessionSwitcherQueries({
+        environments,
+        filters: {
+          query: deferredQuery,
+          activityWindow: "30d",
+          sort: "nativeActivity",
+          limit: CLAUDE_SESSION_SWITCHER_LIMIT,
+        },
+      }),
+    [deferredQuery, environments],
+  );
+  const claudeSessionCatalogue = useClaudeSessionCatalogue({
+    enabled: claudeSessionSwitcherEnabled,
+    environments,
+    queriesByEnvironment: claudeSessionQueriesByEnvironment,
+    sort: "nativeActivity",
+  });
+  const closePaletteBeforeOpeningClaudeSession = useCallback(() => setOpen(false), [setOpen]);
+  const openClaudeSession = useOpenClaudeSession({
+    beforeNavigate: closePaletteBeforeOpeningClaudeSession,
+  });
   const getAddProjectInitialQueryForEnvironment = useCallback(
     (environmentId: EnvironmentId | null): string => {
       const environment = environments.find(
@@ -715,6 +763,23 @@ function OpenCommandPaletteDialog(props: {
     [activeThreadId, clientSettings.sidebarThreadSortOrder, navigate, projectTitleById, threads],
   );
   const recentThreadItems = allThreadItems.slice(0, RECENT_THREAD_LIMIT);
+  const claudeSessionItems = useMemo(
+    () =>
+      buildClaudeSessionActionItems({
+        sessions: claudeSessionCatalogue.sessions.slice(0, CLAUDE_SESSION_SWITCHER_LIMIT),
+        icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+        renderTrailingContent: (session) => {
+          const attachment = presentClaudeSessionAttachment(session.session);
+          return (
+            <span className="ml-auto shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+              {attachment.attached ? "T3" : "Native"}
+            </span>
+          );
+        },
+        runSession: openClaudeSession,
+      }),
+    [claudeSessionCatalogue.sessions, openClaudeSession],
+  );
 
   function pushPaletteView(view: CommandPaletteView): void {
     setViewStack((previousViews) => [
@@ -1003,6 +1068,25 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push({
     kind: "action",
+    value: "action:browse-claude-sessions",
+    searchTerms: [
+      "browse claude sessions",
+      "continue",
+      "resume",
+      "history",
+      "native claude code",
+      "switch session",
+    ],
+    title: "Browse Claude sessions",
+    description: "Search native sessions across all environments",
+    icon: <HistoryIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      openClaudeSessionBrowser();
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
     value: "action:add-project",
     searchTerms: [
       "add project",
@@ -1056,7 +1140,11 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
-  const rootGroups = buildRootGroups({ actionItems, recentThreadItems });
+  const rootGroups = buildRootGroups({
+    actionItems,
+    recentThreadItems,
+    claudeSessionItems,
+  });
   const sourceSelectionViewValue =
     addProjectEnvironmentId === null ? null : `sources:${addProjectEnvironmentId}`;
   const activeGroups =

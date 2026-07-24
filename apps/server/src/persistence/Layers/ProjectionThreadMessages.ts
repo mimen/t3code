@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
-import { ChatAttachment } from "@t3tools/contracts";
+import { ChatAttachment, OrchestrationItemProvenance } from "@t3tools/contracts";
 
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -21,6 +21,8 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   Struct.assign({
     isStreaming: Schema.Number,
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
+    provenance: Schema.NullOr(Schema.fromJsonString(OrchestrationItemProvenance)),
+    timelineOrderKey: Schema.NullOr(Schema.String),
   }),
 );
 
@@ -37,6 +39,8 @@ function toProjectionThreadMessage(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     ...(row.attachments !== null ? { attachments: row.attachments } : {}),
+    ...(row.provenance !== null ? { provenance: row.provenance } : {}),
+    ...(row.timelineOrderKey !== null ? { timelineOrderKey: row.timelineOrderKey } : {}),
   };
 }
 
@@ -57,6 +61,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           text,
           attachments_json,
           is_streaming,
+          provenance_json,
+          timeline_order_key,
           created_at,
           updated_at
         )
@@ -75,6 +81,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
             )
           ),
           ${row.isStreaming ? 1 : 0},
+          ${row.provenance !== undefined ? JSON.stringify(row.provenance) : null},
+          ${row.timelineOrderKey ?? null},
           ${row.createdAt},
           ${row.updatedAt}
         )
@@ -89,6 +97,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
             projection_thread_messages.attachments_json
           ),
           is_streaming = excluded.is_streaming,
+          provenance_json = excluded.provenance_json,
+          timeline_order_key = excluded.timeline_order_key,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at
       `;
@@ -108,6 +118,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           text,
           attachments_json AS "attachments",
           is_streaming AS "isStreaming",
+          provenance_json AS "provenance",
+          timeline_order_key AS "timelineOrderKey",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM projection_thread_messages
@@ -129,11 +141,13 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           text,
           attachments_json AS "attachments",
           is_streaming AS "isStreaming",
+          provenance_json AS "provenance",
+          timeline_order_key AS "timelineOrderKey",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM projection_thread_messages
         WHERE thread_id = ${threadId}
-        ORDER BY created_at ASC, message_id ASC
+        ORDER BY COALESCE(timeline_order_key, created_at || ':' || message_id) ASC, message_id ASC
       `,
   });
 

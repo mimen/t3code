@@ -744,6 +744,139 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.external-session.attach": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      if (
+        thread.externalSession !== undefined &&
+        thread.externalSession.sourceId !== command.externalSession.sourceId
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "A thread can have only one external Claude session source.",
+        });
+      }
+      if (command.checkpoint.sourceId !== command.externalSession.sourceId) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "External session attachment checkpoint source does not match the attachment.",
+        });
+      }
+      if (
+        command.checkpoint.generation !== 0 ||
+        command.checkpoint.committedByteOffset !== 0 ||
+        command.checkpoint.committedLineOrdinal !== 0 ||
+        command.checkpoint.revision !== 0
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "External session attachment must initialize an empty checkpoint.",
+        });
+      }
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.external-session-attached",
+        payload: {
+          threadId: command.threadId,
+          externalSession: command.externalSession,
+          localSourceHost: command.localSourceHost,
+          checkpoint: command.checkpoint,
+        },
+      };
+    }
+
+    case "thread.external-history.import": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      if (thread.externalSession?.sourceId !== command.sourceId) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "External history import source is not attached to the target thread.",
+        });
+      }
+      if (command.checkpoint.sourceId !== command.sourceId) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "External history checkpoint source does not match the import source.",
+        });
+      }
+      if (command.checkpoint.revision !== command.expectedCheckpointRevision + 1) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail:
+            "External history checkpoints must advance exactly one revision per import batch.",
+        });
+      }
+      for (const item of command.items) {
+        const provenance =
+          item.kind === "message" ? item.message.provenance : item.activity.provenance;
+        if (
+          provenance?.origin !== "claude-code-jsonl" ||
+          provenance.sourceId !== command.sourceId ||
+          provenance.sourceItemKey !== item.sourceItemKey
+        ) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: "Imported history items must carry matching Claude JSONL provenance.",
+          });
+        }
+      }
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.external-history-imported",
+        payload: {
+          threadId: command.threadId,
+          sourceId: command.sourceId,
+          items: command.items,
+          expectedCheckpointRevision: command.expectedCheckpointRevision,
+          checkpoint: command.checkpoint,
+        },
+      };
+    }
+
+    case "thread.external-session.sync-state.set": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      if (thread.externalSession?.sourceId !== command.externalSession.sourceId) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "External session sync state source is not attached to the target thread.",
+        });
+      }
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.external-session-sync-state-updated",
+        payload: {
+          threadId: command.threadId,
+          externalSession: command.externalSession,
+        },
+      };
+    }
+
     case "thread.activity.append": {
       yield* requireThread({
         readModel,

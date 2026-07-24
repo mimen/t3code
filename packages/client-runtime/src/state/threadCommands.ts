@@ -7,6 +7,7 @@ import {
   type CreateThreadInput,
   type DeleteThreadInput,
   type InterruptThreadTurnInput,
+  type GetThreadTimelinePageInput,
   type RespondToThreadApprovalInput,
   type RespondToThreadUserInputInput,
   type RevertThreadCheckpointInput,
@@ -14,11 +15,13 @@ import {
   type SetThreadRuntimeModeInput,
   type StartThreadTurnInput,
   type StopThreadSessionInput,
+  type SyncClaudeSessionInput,
   type UnarchiveThreadInput,
   type UpdateThreadMetadataInput,
   archiveThread,
   createThread,
   deleteThread,
+  getThreadTimelinePage,
   interruptThreadTurn,
   respondToThreadApproval,
   respondToThreadUserInput,
@@ -27,6 +30,7 @@ import {
   setThreadRuntimeMode,
   startThreadTurn,
   stopThreadSession,
+  syncClaudeSession,
   unarchiveThread,
   updateThreadMetadata,
 } from "../operations/commands.ts";
@@ -36,6 +40,7 @@ export type {
   ArchiveThreadInput,
   CreateThreadInput,
   DeleteThreadInput,
+  GetThreadTimelinePageInput,
   InterruptThreadTurnInput,
   RespondToThreadApprovalInput,
   RespondToThreadUserInputInput,
@@ -44,6 +49,7 @@ export type {
   SetThreadRuntimeModeInput,
   StartThreadTurnInput,
   StopThreadSessionInput,
+  SyncClaudeSessionInput,
   UnarchiveThreadInput,
   UpdateThreadMetadataInput,
 } from "../operations/commands.ts";
@@ -135,6 +141,22 @@ export function createThreadEnvironmentAtoms<R, E>(
       execute: (input: StopThreadSessionInput) => stopThreadSession(input),
       scheduler,
       concurrency,
+    }),
+    getTimelinePage: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:get-timeline-page",
+      execute: (input: GetThreadTimelinePageInput) => getThreadTimelinePage(input),
+      scheduler,
+      concurrency,
+    }),
+    syncClaudeSession: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:sync-claude-session",
+      execute: (input: SyncClaudeSessionInput) => syncClaudeSession(input),
+      scheduler,
+      concurrency: {
+        mode: "serial" as const,
+        key: ({ environmentId, input }: { environmentId: string; input: SyncClaudeSessionInput }) =>
+          JSON.stringify([environmentId, input.sourceId]),
+      },
     }),
   };
 }
