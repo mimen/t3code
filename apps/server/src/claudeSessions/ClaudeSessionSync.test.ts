@@ -3,7 +3,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { CommandId, ProviderInstanceId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { CommandId, MessageId, ProviderInstanceId, ProjectId, ThreadId } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -267,6 +267,56 @@ describe("ClaudeSessionSync", () => {
       expect(secondThread?.messages).toHaveLength(2);
       expect(secondThread?.activities).toHaveLength(1);
 
+      const liveMessageId = MessageId.make("live-assistant-message");
+      const continuationTimestamp = "2026-03-04T05:06:09.000Z";
+      await runtime.runPromise(
+        engine.dispatch({
+          type: "thread.message.assistant.delta",
+          commandId: CommandId.make("live-assistant-delta-command"),
+          threadId,
+          messageId: liveMessageId,
+          delta: "This response was already persisted by T3.",
+          createdAt: continuationTimestamp,
+        }),
+      );
+      await runtime.runPromise(
+        engine.dispatch({
+          type: "thread.message.assistant.complete",
+          commandId: CommandId.make("live-assistant-complete-command"),
+          threadId,
+          messageId: liveMessageId,
+          createdAt: continuationTimestamp,
+        }),
+      );
+      await NodeFSP.appendFile(
+        sourcePath,
+        `${JSON.stringify({
+          type: "assistant",
+          uuid: "assistant-continuation",
+          sessionId: nativeSessionId,
+          cwd: workspaceRoot,
+          timestamp: continuationTimestamp,
+          message: { role: "assistant", content: "This response was already persisted by T3." },
+        })}\n`,
+        "utf8",
+      );
+      const deduplicatedSync = await runtime.runPromise(syncService.syncSource(sourceId));
+      expect(deduplicatedSync.importedItemCount).toBe(0);
+      const deduplicatedSnapshot = await runtime.runPromise(snapshotQuery.getSnapshot());
+      expect(
+        deduplicatedSnapshot.threads.find((thread) => thread.id === threadId)?.messages,
+      ).toHaveLength(3);
+      const deduplicatedMapping = await runtime.runPromise(
+        sources.getSourceItem({
+          sourceId,
+          sourceItemKey: "assistant-continuation:message:0",
+        }),
+      );
+      expect(Option.isSome(deduplicatedMapping)).toBe(true);
+      if (Option.isSome(deduplicatedMapping)) {
+        expect(deduplicatedMapping.value.targetId).toBe(liveMessageId);
+      }
+
       await NodeFSP.appendFile(
         sourcePath,
         `${JSON.stringify({
@@ -284,7 +334,7 @@ describe("ClaudeSessionSync", () => {
       const appendedSnapshot = await runtime.runPromise(snapshotQuery.getSnapshot());
       expect(
         appendedSnapshot.threads.find((thread) => thread.id === threadId)?.messages,
-      ).toHaveLength(3);
+      ).toHaveLength(4);
 
       const committedContents = await NodeFSP.readFile(sourcePath, "utf8");
       const mutatedPrefix = committedContents.replace(

@@ -1180,6 +1180,13 @@ export const ExternalHistoryItem = Schema.Union([
 ]);
 export type ExternalHistoryItem = typeof ExternalHistoryItem.Type;
 
+export const ExternalHistoryDeduplicatedMessage = Schema.Struct({
+  sourceItemKey: TrimmedNonEmptyString,
+  contentHash: TrimmedNonEmptyString,
+  messageId: MessageId,
+});
+export type ExternalHistoryDeduplicatedMessage = typeof ExternalHistoryDeduplicatedMessage.Type;
+
 export const ThreadExternalSessionAttachedPayload = Schema.Struct({
   threadId: ThreadId,
   externalSession: OrchestrationExternalSessionSummary,
@@ -1192,6 +1199,7 @@ export const ThreadExternalHistoryImportedPayload = Schema.Struct({
   threadId: ThreadId,
   sourceId: TrimmedNonEmptyString,
   items: Schema.Array(ExternalHistoryItem),
+  deduplicatedMessages: Schema.optionalKey(Schema.Array(ExternalHistoryDeduplicatedMessage)),
   expectedCheckpointRevision: NonNegativeInt,
   checkpoint: ExternalSessionCheckpoint,
 });

@@ -2,7 +2,7 @@
 import * as NodePath from "node:path";
 
 import {
-  AuthAdministrativeScopes,
+  AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   EnvironmentHttpApi,
   type ClaudeSessionAttachmentStatusCliResult,
@@ -81,8 +81,9 @@ const withSessionCliToken = <A, E, R>(
 ) =>
   Effect.acquireUseRelease(
     environmentAuth.issueSession({
-      scopes: AuthAdministrativeScopes,
+      scopes: [AuthOrchestrationOperateScope],
       label: "t3 session open cli",
+      ttl: Duration.minutes(2),
     }),
     (issued) => run(issued.token),
     (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
@@ -96,6 +97,7 @@ const withSessionStatusCliToken = <A, E, R>(
     environmentAuth.issueSession({
       scopes: [AuthOrchestrationReadScope],
       label: "t3 session status cli",
+      ttl: Duration.minutes(2),
     }),
     (issued) => run(issued.token),
     (issued) => environmentAuth.revokeSession(issued.sessionId).pipe(Effect.ignore({ log: true })),
@@ -303,7 +305,8 @@ const sessionStatusCommand = Command.make("status", {
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
-      const logLevel = yield* GlobalFlag.LogLevel;
+      const requestedLogLevel = yield* GlobalFlag.LogLevel;
+      const logLevel = flags.json ? Option.some("Warn" as const) : requestedLogLevel;
       const config = yield* resolveCliAuthConfig(flags, logLevel);
       const runtimeLayer = Layer.mergeAll(EnvironmentAuth.runtimeLayer, FetchHttpClient.layer).pipe(
         Layer.provide(ServerConfig.layer(config)),
@@ -331,7 +334,8 @@ const sessionOpenCommand = Command.make("open", {
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
-      const logLevel = yield* GlobalFlag.LogLevel;
+      const requestedLogLevel = yield* GlobalFlag.LogLevel;
+      const logLevel = flags.json ? Option.some("Warn" as const) : requestedLogLevel;
       const config = yield* resolveCliAuthConfig(flags, logLevel);
       const configuredClaudeHome = Option.getOrUndefined(flags.claudeHome)?.trim();
       const claudeHomePath =
@@ -354,17 +358,39 @@ const sessionOpenCommand = Command.make("open", {
 
       const open = Effect.gen(function* () {
         const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
-        const liveResult = yield* tryOpenClaudeSessionOnLiveServer(
-          {
-            nativeSessionId: input.nativeSessionId,
-            cwd: input.cwd,
-            model: input.model,
-          },
-          environmentAuth,
-          config,
-        );
-        if (Option.isSome(liveResult)) {
-          return yield* renderLiveOpenResult(liveResult.value, flags.json);
+        if (configuredClaudeHome === undefined || configuredClaudeHome.length === 0) {
+          const liveResult = yield* tryOpenClaudeSessionOnLiveServer(
+            {
+              nativeSessionId: input.nativeSessionId,
+              cwd: input.cwd,
+              model: input.model,
+            },
+            environmentAuth,
+            config,
+          );
+          if (Option.isSome(liveResult)) {
+            return yield* renderLiveOpenResult(liveResult.value, flags.json);
+          }
+        } else {
+          const runtimeState = yield* readPersistedServerRuntimeState(
+            config.serverRuntimeStatePath,
+          );
+          if (Option.isSome(runtimeState)) {
+            if (isProcessRunning(runtimeState.value.pid)) {
+              return yield* renderLiveOpenResult(
+                {
+                  ok: false,
+                  error: {
+                    code: "t3_unavailable",
+                    message:
+                      "Cannot use --claude-home while a T3 server is running for this environment; stop the server or use its configured Claude home.",
+                  },
+                },
+                flags.json,
+              );
+            }
+            yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+          }
         }
 
         const coordinator = yield* ClaudeSessionCoordinator;

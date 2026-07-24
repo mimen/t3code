@@ -54,11 +54,26 @@ function ClaudeSessionFocusNavigator() {
     }
 
     handledRequestIdRef.current = focusRequest.requestId;
-    window.focus();
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(scopeThreadRef(activeEnvironmentId, focusRequest.threadId)),
-    });
+    toastManager.add(
+      stackedThreadToast({
+        type: "info",
+        title: "Claude session opened in T3",
+        description: "Open the attached thread when you are ready.",
+        timeout: 15_000,
+        actionProps: {
+          children: "Open thread",
+          onClick: () => {
+            window.focus();
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(
+                scopeThreadRef(activeEnvironmentId, focusRequest.threadId),
+              ),
+            });
+          },
+        },
+      }),
+    );
   }, [activeEnvironmentId, navigate, shell.data]);
 
   return null;

@@ -140,6 +140,9 @@ export interface ThreadFeedProps {
   readonly layoutVariant?: LayoutVariant;
   readonly usesAutomaticContentInsets?: boolean;
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
+  readonly canLoadOlderHistory?: boolean;
+  readonly isLoadingOlderHistory?: boolean;
+  readonly onLoadOlderHistory?: () => void;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
 }
 
@@ -1792,7 +1795,25 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             onScroll={handleScroll}
             scrollEventThrottle={16}
             ListHeaderComponent={
-              usesNativeAutomaticInsets ? null : <View style={{ height: topContentInset }} />
+              <View>
+                {usesNativeAutomaticInsets ? null : <View style={{ height: topContentInset }} />}
+                {props.canLoadOlderHistory ? (
+                  <View className="items-center pb-2 pt-1">
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Load older Claude history"
+                      disabled={props.isLoadingOlderHistory}
+                      onPress={props.onLoadOlderHistory}
+                      className="min-h-10 flex-row items-center justify-center gap-2 rounded-full border border-border px-4"
+                    >
+                      {props.isLoadingOlderHistory ? <ActivityIndicator size="small" /> : null}
+                      <Text className="text-xs font-t3-semibold text-muted-foreground">
+                        {props.isLoadingOlderHistory ? "Loading history…" : "Load older history"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
             }
             contentContainerStyle={{
               paddingTop: 12,

@@ -8,7 +8,7 @@ import * as Schema from "effect/Schema";
 
 const READ_CHUNK_BYTES = 64 * 1024;
 export const CLAUDE_JSONL_MAX_LINE_BYTES = 4 * 1024 * 1024;
-const DEFAULT_MAX_RECORDS = 250;
+const DEFAULT_MAX_RECORDS = 64;
 
 export class ClaudeJsonlReadError extends Schema.TaggedErrorClass<ClaudeJsonlReadError>()(
   "ClaudeJsonlReadError",
@@ -43,6 +43,7 @@ export interface ReadCompleteClaudeJsonlRecordsInput {
   readonly startByteOffset: number;
   readonly startLineOrdinal: number;
   readonly maxRecords?: number;
+  readonly maxBytes?: number;
 }
 
 export interface ReadCompleteClaudeJsonlRecordsResult extends ClaudeJsonlFileMetadata {
@@ -50,6 +51,7 @@ export interface ReadCompleteClaudeJsonlRecordsResult extends ClaudeJsonlFileMet
   readonly nextByteOffset: number;
   readonly nextLineOrdinal: number;
   readonly hasIncompleteTail: boolean;
+  readonly reachedLimit: boolean;
 }
 
 function toFileIdentity(stat: Stats): string {
@@ -187,6 +189,14 @@ export const readCompleteClaudeJsonlRecords = Effect.fn("readCompleteClaudeJsonl
         "Maximum records must be a positive safe integer.",
       );
     }
+    const maxBytes = input.maxBytes ?? Number.MAX_SAFE_INTEGER;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      return yield* readError(
+        canonicalPath,
+        "read",
+        "Maximum committed bytes must be a positive safe integer.",
+      );
+    }
 
     return yield* Effect.acquireUseRelease(
       Effect.tryPromise({
@@ -233,6 +243,13 @@ export const readCompleteClaudeJsonlRecords = Effect.fn("readCompleteClaudeJsonl
               }
               const lineEndByteOffset = combinedStartByteOffset + end;
               const lineStartByteOffset = combinedStartByteOffset + segmentStart;
+              if (
+                nextByteOffset > input.startByteOffset &&
+                lineEndByteOffset - input.startByteOffset > maxBytes
+              ) {
+                stop = true;
+                break;
+              }
               segmentStart = end;
               lineOrdinal += 1;
               nextByteOffset = lineEndByteOffset;
@@ -279,6 +296,7 @@ export const readCompleteClaudeJsonlRecords = Effect.fn("readCompleteClaudeJsonl
             nextByteOffset,
             nextLineOrdinal: lineOrdinal,
             hasIncompleteTail: !stop && pending.length > 0,
+            reachedLimit: stop,
           };
         }),
       (handle) =>

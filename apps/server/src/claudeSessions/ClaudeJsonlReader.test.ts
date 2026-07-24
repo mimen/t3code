@@ -91,6 +91,24 @@ describe("readCompleteClaudeJsonlRecords", () => {
     expect(read.nextLineOrdinal).toBe(2);
   });
 
+  it("bounds a batch by committed bytes without skipping the next record", async () => {
+    const sourcePath = await makeSourceFile("one\ntwo\nthree\n");
+    const read = await Effect.runPromise(
+      readCompleteClaudeJsonlRecords({
+        sourcePath,
+        startByteOffset: 0,
+        startLineOrdinal: 0,
+        maxRecords: 10,
+        maxBytes: Buffer.byteLength("one\ntwo\n"),
+      }),
+    );
+
+    expect(read.records.map((record) => record.line)).toEqual(["one", "two"]);
+    expect(read.nextByteOffset).toBe(Buffer.byteLength("one\ntwo\n"));
+    expect(read.nextLineOrdinal).toBe(2);
+    expect(read.reachedLimit).toBe(true);
+  });
+
   it("rejects a complete line that exceeds the source record size limit", async () => {
     const sourcePath = await makeSourceFile(`${"x".repeat(CLAUDE_JSONL_MAX_LINE_BYTES)}\n`);
 

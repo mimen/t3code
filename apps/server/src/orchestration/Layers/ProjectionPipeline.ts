@@ -718,6 +718,27 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
                 ),
             { concurrency: 1 },
           );
+          yield* Effect.forEach(
+            event.payload.deduplicatedMessages ?? [],
+            (item) =>
+              externalClaudeSessionRepository
+                .ensureSourceItem({
+                  sourceId: event.payload.sourceId,
+                  sourceItemKey: item.sourceItemKey,
+                  targetKind: "message",
+                  targetId: item.messageId,
+                  contentHash: item.contentHash,
+                  createdAt: event.occurredAt,
+                })
+                .pipe(
+                  Effect.mapError(
+                    toPersistenceSqlError(
+                      "ProjectionPipeline.externalSession.ensureDeduplicatedItem",
+                    ),
+                  ),
+                ),
+            { concurrency: 1 },
+          );
           yield* externalClaudeSessionRepository
             .advanceCheckpoint({
               expectedRevision: event.payload.expectedCheckpointRevision,

@@ -1109,6 +1109,21 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           updated_at AS "updatedAt"
         FROM projection_thread_messages
         WHERE thread_id = ${threadId}
+          AND (
+            provenance_json IS NULL
+            OR json_extract(provenance_json, '$.origin') <> 'claude-code-jsonl'
+            OR message_id IN (
+              SELECT recent.message_id
+              FROM projection_thread_messages AS recent
+              WHERE recent.thread_id = ${threadId}
+                AND json_extract(recent.provenance_json, '$.origin') = 'claude-code-jsonl'
+              ORDER BY
+                recent.created_at DESC,
+                COALESCE(recent.timeline_order_key, recent.created_at || ':' || recent.message_id) DESC,
+                recent.message_id DESC
+              LIMIT 100
+            )
+          )
         ORDER BY COALESCE(timeline_order_key, created_at || ':' || message_id) ASC, message_id ASC
       `,
   });
@@ -1152,6 +1167,21 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           created_at AS "createdAt"
         FROM projection_thread_activities
         WHERE thread_id = ${threadId}
+          AND (
+            provenance_json IS NULL
+            OR json_extract(provenance_json, '$.origin') <> 'claude-code-jsonl'
+            OR activity_id IN (
+              SELECT recent.activity_id
+              FROM projection_thread_activities AS recent
+              WHERE recent.thread_id = ${threadId}
+                AND json_extract(recent.provenance_json, '$.origin') = 'claude-code-jsonl'
+              ORDER BY
+                recent.created_at DESC,
+                COALESCE(recent.timeline_order_key, recent.created_at || ':' || recent.activity_id) DESC,
+                recent.activity_id DESC
+              LIMIT 100
+            )
+          )
         ORDER BY
           CASE WHEN sequence IS NULL THEN 0 ELSE 1 END ASC,
           sequence ASC,

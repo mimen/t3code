@@ -90,6 +90,14 @@ function toValidationError(
   });
 }
 
+function readNativeResumeId(resumeCursor: unknown): string | null {
+  if (typeof resumeCursor !== "object" || resumeCursor === null || Array.isArray(resumeCursor)) {
+    return null;
+  }
+  const resume = Reflect.get(resumeCursor, "resume");
+  return typeof resume === "string" ? resume : null;
+}
+
 const decodeInputOrValidationError = <S extends Schema.Top>(input: {
   readonly operation: string;
   readonly schema: S;
@@ -223,7 +231,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   const validateExternalClaudeContinuation = Effect.fn(
     "ProviderService.validateExternalClaudeContinuation",
-  )(function* (input: { readonly threadId: ThreadId; readonly effectiveCwd: string | undefined }) {
+  )(function* (input: {
+    readonly threadId: ThreadId;
+    readonly providerInstanceId: ProviderInstanceId;
+    readonly effectiveCwd: string | undefined;
+    readonly effectiveResumeCursor: unknown;
+  }) {
     if (Option.isNone(externalClaudeSessionRepository)) {
       return;
     }
@@ -245,6 +258,18 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       return yield* toValidationError(
         "ProviderService.startSession",
         `Attached Claude session source is ${source.value.state}; synchronize or repair it before continuing.`,
+      );
+    }
+    if (input.providerInstanceId !== source.value.providerInstanceId) {
+      return yield* toValidationError(
+        "ProviderService.startSession",
+        "Native Claude continuation provider instance does not match the attached source binding.",
+      );
+    }
+    if (readNativeResumeId(input.effectiveResumeCursor) !== source.value.nativeSessionId) {
+      return yield* toValidationError(
+        "ProviderService.startSession",
+        "Native Claude continuation resume cursor does not match the attached source binding.",
       );
     }
     if (input.effectiveCwd !== source.value.sourceCwd) {
@@ -625,7 +650,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           (persistedBinding?.providerInstanceId === resolvedInstanceId
             ? readPersistedCwd(persistedBinding.runtimePayload)
             : undefined);
-        yield* validateExternalClaudeContinuation({ threadId, effectiveCwd });
+        yield* validateExternalClaudeContinuation({
+          threadId,
+          providerInstanceId: resolvedInstanceId,
+          effectiveCwd,
+          effectiveResumeCursor,
+        });
         yield* Effect.annotateCurrentSpan({
           "provider.kind": resolvedProvider,
           "provider.resume_cursor.source":

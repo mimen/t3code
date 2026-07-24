@@ -37,7 +37,8 @@ import {
   type ClaudeSessionPreviewError,
 } from "./ClaudeSessionPreview.ts";
 
-const CATALOG_SCAN_MAX_RECORDS = 1_000;
+const CATALOG_SCAN_MAX_RECORDS = 128;
+const CATALOG_SCAN_MAX_BYTES = 4 * 1024 * 1024;
 const DEGRADED_CATALOGUE_DISCOVERY_LIMIT = 2_000;
 const DEGRADED_CATALOGUE_CANDIDATE_LIMIT = 200;
 const DEFAULT_CLAUDE_PROVIDER_INSTANCE_ID = ProviderInstanceId.make("claudeAgent");
@@ -317,6 +318,7 @@ const makeClaudeSessionCatalog = Effect.gen(function* () {
       startByteOffset: 0,
       startLineOrdinal: 0,
       maxRecords: CATALOG_SCAN_MAX_RECORDS,
+      maxBytes: CATALOG_SCAN_MAX_BYTES,
     });
 
     let nativeSessionId: string | null = null;
@@ -391,6 +393,7 @@ const makeClaudeSessionCatalog = Effect.gen(function* () {
 
   const listSourcePaths = Effect.fn("ClaudeSessionCatalog.listSourcePaths")(function* (
     maximumPaths: number | null,
+    matchingFilename?: string,
   ) {
     const projectsRoot = yield* getProjectsRoot();
     const sourcePaths: string[] = [];
@@ -426,7 +429,11 @@ const makeClaudeSessionCatalog = Effect.gen(function* () {
             }
             continue;
           }
-          if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+          if (
+            entry.isFile() &&
+            entry.name.endsWith(".jsonl") &&
+            (matchingFilename === undefined || entry.name === matchingFilename)
+          ) {
             sourcePaths.push(entryPath);
           }
         }
@@ -670,15 +677,11 @@ const makeClaudeSessionCatalog = Effect.gen(function* () {
 
   const findSessionWithBuiltin = Effect.fn("ClaudeSessionCatalog.findSessionWithBuiltin")(
     function* (nativeSessionId: string, cwd: string) {
-      const { sourcePaths } = yield* listSourcePaths(null);
       const exactFilename = `${nativeSessionId}.jsonl`;
-      const orderedPaths = sourcePaths.toSorted((left, right) => {
-        const leftExact = NodePath.basename(left) === exactFilename ? 0 : 1;
-        const rightExact = NodePath.basename(right) === exactFilename ? 0 : 1;
-        return leftExact - rightExact || left.localeCompare(right);
-      });
+      const discovery = yield* listSourcePaths(null, exactFilename);
+      const candidatePaths = discovery.sourcePaths;
       const scanned = yield* Effect.forEach(
-        orderedPaths,
+        candidatePaths,
         (sourcePath) => Effect.option(scanSource(sourcePath)),
         { concurrency: 4 },
       );

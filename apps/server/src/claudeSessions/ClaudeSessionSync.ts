@@ -6,6 +6,7 @@ import {
   CommandId,
   EventId,
   MessageId,
+  type ExternalHistoryDeduplicatedMessage,
   type ExternalHistoryItem,
   type ExternalSessionCheckpoint,
   type OrchestrationExternalSessionSummary,
@@ -39,6 +40,7 @@ import {
 } from "../persistence/Services/ExternalClaudeSessions.ts";
 
 const SYNC_BATCH_MAX_RECORDS = 250;
+const SYNC_BATCH_MAX_BYTES = 4 * 1024 * 1024;
 const IMPORT_LABEL = "Imported from Claude Code";
 // Session-core layers are created per WebSocket connection, but process-local
 // synchronization must coordinate every connection against the same source.
@@ -286,6 +288,32 @@ const makeClaudeSessionSync = Effect.gen(function* () {
     },
   );
 
+  const validateDeduplicatedMessageMappings = Effect.fn(
+    "ClaudeSessionSync.validateDeduplicatedMessageMappings",
+  )(function* (sourceId: string, items: ReadonlyArray<ExternalHistoryDeduplicatedMessage>) {
+    for (const item of items) {
+      const existing = yield* externalSources.getSourceItem({
+        sourceId,
+        sourceItemKey: item.sourceItemKey,
+      });
+      if (Option.isNone(existing)) {
+        continue;
+      }
+      if (
+        existing.value.contentHash !== item.contentHash ||
+        existing.value.targetKind !== "message" ||
+        existing.value.targetId !== item.messageId
+      ) {
+        return yield* toSyncError({
+          sourceId,
+          state: "desynced",
+          operation: "source-item-mapping",
+          detail: `Deduplicated source item '${item.sourceItemKey}' changed after import.`,
+        });
+      }
+    }
+  });
+
   const syncKnownSource = Effect.fn("ClaudeSessionSync.syncKnownSource")(function* (
     source: ExternalClaudeSessionSource,
   ) {
@@ -312,24 +340,33 @@ const makeClaudeSessionSync = Effect.gen(function* () {
         }),
       ),
     );
-    const liveT3Messages = thread.messages.filter(
-      (message) => message.provenance?.origin !== "claude-code-jsonl",
+    const liveMessageCandidates = thread.messages.filter(
+      (message) =>
+        message.provenance?.origin !== "claude-code-jsonl" && message.createdAt >= source.createdAt,
     );
-    const isLikelyT3ContinuationRecord = (record: {
-      readonly timestamp: string | null;
-      readonly items: ReadonlyArray<ClaudeNormalizedHistoryItem>;
-    }): boolean =>
-      record.items.some(
-        (item) =>
-          item.kind === "message" &&
-          liveT3Messages.some(
-            (message) =>
-              message.role === item.role &&
-              message.text === item.text &&
-              item.timestamp !== null &&
-              Math.abs(Date.parse(message.createdAt) - Date.parse(item.timestamp)) <= 120_000,
-          ),
+    const matchedLiveMessageIds = new Set<string>();
+    const findLiveDuplicate = (item: ClaudeNormalizedHistoryItem) => {
+      if (item.kind !== "message" || item.timestamp === null) {
+        return null;
+      }
+      const sourceTimestamp = Date.parse(item.timestamp);
+      if (!Number.isFinite(sourceTimestamp)) {
+        return null;
+      }
+      const toleranceMs = item.role === "user" ? 15_000 : 5 * 60_000;
+      const match = liveMessageCandidates.find(
+        (message) =>
+          !matchedLiveMessageIds.has(message.id) &&
+          message.role === item.role &&
+          message.text === item.text &&
+          Math.abs(Date.parse(message.createdAt) - sourceTimestamp) <= toleranceMs,
       );
+      if (match === undefined) {
+        return null;
+      }
+      matchedLiveMessageIds.add(match.id);
+      return match;
+    };
 
     const validated = yield* catalog
       .validateAttachedSource({
@@ -390,6 +427,7 @@ const makeClaudeSessionSync = Effect.gen(function* () {
         startByteOffset: currentCheckpoint.committedByteOffset,
         startLineOrdinal: currentCheckpoint.committedLineOrdinal,
         maxRecords: SYNC_BATCH_MAX_RECORDS,
+        maxBytes: SYNC_BATCH_MAX_BYTES,
       }).pipe(Effect.mapError((error) => readerErrorToSyncError(source.sourceId, error)));
       if (read.fileIdentity !== currentCheckpoint.fileIdentity) {
         return yield* toSyncError({
@@ -407,20 +445,9 @@ const makeClaudeSessionSync = Effect.gen(function* () {
           detail: "Claude session source file became smaller after synchronization.",
         });
       }
-      if (
-        read.observedSize === currentCheckpoint.observedSize &&
-        read.observedMtimeMs !== currentCheckpoint.observedMtimeMs
-      ) {
-        return yield* toSyncError({
-          sourceId: source.sourceId,
-          state: "desynced",
-          operation: "committed-prefix-mutated",
-          detail: "Claude session source changed without appending history.",
-        });
-      }
-
       const batchTimestamp = yield* nowIso;
       const items: ExternalHistoryItem[] = [];
+      const deduplicatedMessages: ExternalHistoryDeduplicatedMessage[] = [];
       for (const rawRecord of read.records) {
         const normalized = normalizeClaudeJsonlLine({
           line: rawRecord.line,
@@ -469,18 +496,26 @@ const makeClaudeSessionSync = Effect.gen(function* () {
             });
           }
         }
-        if (record === null || isLikelyT3ContinuationRecord(record)) {
+        if (record === null) {
           continue;
         }
         for (const normalizedItem of record.items) {
-          items.push(
-            toExternalHistoryItem({
-              sourceId: source.sourceId,
-              normalized: normalizedItem,
-              lineOrdinal: rawRecord.lineOrdinal,
-              fallbackTimestamp: batchTimestamp,
-            }),
-          );
+          const historyItem = toExternalHistoryItem({
+            sourceId: source.sourceId,
+            normalized: normalizedItem,
+            lineOrdinal: rawRecord.lineOrdinal,
+            fallbackTimestamp: batchTimestamp,
+          });
+          const liveDuplicate = findLiveDuplicate(normalizedItem);
+          if (historyItem.kind === "message" && liveDuplicate !== null) {
+            deduplicatedMessages.push({
+              sourceItemKey: historyItem.sourceItemKey,
+              contentHash: historyItem.contentHash,
+              messageId: liveDuplicate.id,
+            });
+            continue;
+          }
+          items.push(historyItem);
         }
       }
 
@@ -497,6 +532,19 @@ const makeClaudeSessionSync = Effect.gen(function* () {
               }),
         ),
       );
+      yield* validateDeduplicatedMessageMappings(source.sourceId, deduplicatedMessages).pipe(
+        Effect.mapError((cause) =>
+          cause._tag === "ClaudeSessionSyncError"
+            ? cause
+            : toSyncError({
+                sourceId: source.sourceId,
+                state: "failed",
+                operation: "source-item-mapping",
+                detail: "Cannot validate deduplicated source item mappings.",
+                cause,
+              }),
+        ),
+      );
 
       if (read.nextByteOffset === currentCheckpoint.committedByteOffset) {
         hasIncompleteTail = read.hasIncompleteTail;
@@ -508,6 +556,7 @@ const makeClaudeSessionSync = Effect.gen(function* () {
         startByteOffset: currentCheckpoint.committedByteOffset,
         startLineOrdinal: currentCheckpoint.committedLineOrdinal,
         maxRecords: SYNC_BATCH_MAX_RECORDS,
+        maxBytes: SYNC_BATCH_MAX_BYTES,
       }).pipe(Effect.mapError((error) => readerErrorToSyncError(source.sourceId, error)));
       const readSuffixStillMatches = read.records.every((record, index) => {
         const verified = verifiedRead.records[index];
@@ -565,6 +614,7 @@ const makeClaudeSessionSync = Effect.gen(function* () {
           threadId: source.threadId,
           sourceId: source.sourceId,
           items,
+          ...(deduplicatedMessages.length === 0 ? {} : { deduplicatedMessages }),
           expectedCheckpointRevision: currentCheckpoint.revision,
           checkpoint: nextCheckpoint,
           createdAt: batchTimestamp,
@@ -584,7 +634,7 @@ const makeClaudeSessionSync = Effect.gen(function* () {
       importedItemCount += items.length;
       currentCheckpoint = nextCheckpoint;
       hasIncompleteTail = read.hasIncompleteTail;
-      if (read.records.length < SYNC_BATCH_MAX_RECORDS || read.hasIncompleteTail) {
+      if (!read.reachedLimit || read.hasIncompleteTail) {
         break;
       }
     }

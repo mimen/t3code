@@ -107,6 +107,14 @@ function threadTitle(title: string): string {
   return `${prefix}${title.slice(0, available)}`.trim();
 }
 
+function readResumeId(resumeCursor: unknown): string | null {
+  if (typeof resumeCursor !== "object" || resumeCursor === null || Array.isArray(resumeCursor)) {
+    return null;
+  }
+  const resume = Reflect.get(resumeCursor, "resume");
+  return typeof resume === "string" ? resume : null;
+}
+
 const makeClaudeSessionCoordinator = Effect.gen(function* () {
   const catalog = yield* ClaudeSessionCatalog;
   const syncService = yield* ClaudeSessionSync;
@@ -289,7 +297,11 @@ const makeClaudeSessionCoordinator = Effect.gen(function* () {
               ),
             ),
           );
-        if (Option.isNone(runtime)) {
+        if (
+          Option.isNone(runtime) ||
+          runtime.value.providerInstanceId !== existingSource.value.providerInstanceId ||
+          readResumeId(runtime.value.resumeCursor) !== existingSource.value.nativeSessionId
+        ) {
           const now = yield* nowIso;
           yield* ensureProviderRuntime({
             threadId: thread.id,
@@ -462,23 +474,6 @@ const makeClaudeSessionCoordinator = Effect.gen(function* () {
                 ),
               ),
             );
-          if (createdProject) {
-            yield* orchestrationEngine
-              .dispatch({
-                type: "project.delete",
-                commandId: yield* nextCommandId("discard-racing-project-command-id"),
-                projectId,
-              })
-              .pipe(
-                Effect.mapError((cause) =>
-                  coordinatorError(
-                    "discard-racing-project",
-                    "Cannot remove the losing Claude session attachment project.",
-                    cause,
-                  ),
-                ),
-              );
-          }
           return yield* openUnserialized(input);
         }
         return yield* coordinatorError(
@@ -514,23 +509,6 @@ const makeClaudeSessionCoordinator = Effect.gen(function* () {
               ),
             ),
           );
-        if (createdProject) {
-          yield* orchestrationEngine
-            .dispatch({
-              type: "project.delete",
-              commandId: yield* nextCommandId("discard-racing-project-command-id"),
-              projectId,
-            })
-            .pipe(
-              Effect.mapError((cause) =>
-                coordinatorError(
-                  "discard-racing-project",
-                  "Cannot remove the losing Claude session attachment project.",
-                  cause,
-                ),
-              ),
-            );
-        }
         return yield* openUnserialized(input);
       }
       const syncOutcome = yield* synchronizeForOpen(sourceId);

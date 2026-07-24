@@ -810,6 +810,9 @@ function ThreadRouteContent(
           connectionError={routeConnectionError}
           environmentLabel={selectedEnvironmentConnection?.environmentLabel ?? null}
           selectedThreadFeed={composer.selectedThreadFeed}
+          canLoadOlderHistory={composer.canLoadOlderHistory}
+          isLoadingOlderHistory={composer.isLoadingOlderHistory}
+          onLoadOlderHistory={() => void composer.loadOlderHistory()}
           activeWorkStartedAt={composer.activeWorkStartedAt}
           activePendingApproval={requests.activePendingApproval}
           respondingApprovalId={requests.respondingApprovalId}

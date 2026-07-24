@@ -1,11 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CommandId,
   MessageId,
   type EnvironmentId,
   type ModelSelection,
+  type OrchestrationThreadTimelinePage,
   type ProviderInteractionMode,
   type RuntimeMode,
   type ThreadId,
@@ -40,6 +41,35 @@ import { useSelectedThreadDetail } from "../state/use-thread-detail";
 import { useThreadSelection } from "../state/use-thread-selection";
 import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { useThreadOutboxMessages } from "./use-thread-outbox";
+import { threadEnvironment } from "./threads";
+import { useAtomCommand } from "./use-atom-command";
+
+type ExternalTimelinePage = OrchestrationThreadTimelinePage & { readonly threadId: ThreadId };
+
+function mergeTimelinePages(input: {
+  readonly existing: ExternalTimelinePage | null;
+  readonly page: OrchestrationThreadTimelinePage;
+  readonly threadId: ThreadId;
+}): ExternalTimelinePage {
+  const byKey = new Map<string, OrchestrationThreadTimelinePage["items"][number]>();
+  for (const item of input.existing?.threadId === input.threadId ? input.existing.items : []) {
+    byKey.set(
+      item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+      item,
+    );
+  }
+  for (const item of input.page.items) {
+    byKey.set(
+      item.kind === "message" ? `message:${item.message.id}` : `activity:${item.activity.id}`,
+      item,
+    );
+  }
+  return {
+    threadId: input.threadId,
+    items: [...byKey.values()],
+    nextCursor: input.page.nextCursor,
+  };
+}
 
 export function appendReviewCommentToDraft(input: {
   readonly environmentId: EnvironmentId;
@@ -75,6 +105,14 @@ export function useThreadDraftForThread(input: {
 export function useThreadComposerState() {
   const { selectedThread: selectedThreadShell } = useThreadSelection();
   const selectedThreadDetail = useSelectedThreadDetail();
+  const getTimelinePage = useAtomCommand(threadEnvironment.getTimelinePage, {
+    reportFailure: false,
+  });
+  const [externalTimelinePage, setExternalTimelinePage] = useState<ExternalTimelinePage | null>(
+    null,
+  );
+  const timelineRequestVersion = useRef(0);
+  const [isLoadingOlderHistory, setIsLoadingOlderHistory] = useState(false);
   const composerDrafts = useAtomValue(composerDraftsAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
 
@@ -89,10 +127,84 @@ export function useThreadComposerState() {
     () => (selectedThreadKey ? (queuedMessagesByThreadKey[selectedThreadKey] ?? []) : []),
     [queuedMessagesByThreadKey, selectedThreadKey],
   );
-  const selectedThreadFeed = useMemo(
-    () => (selectedThreadDetail ? buildThreadFeed(selectedThreadDetail) : []),
-    [selectedThreadDetail],
-  );
+
+  useEffect(() => {
+    if (!selectedThreadShell?.externalSession) {
+      timelineRequestVersion.current += 1;
+      setExternalTimelinePage(null);
+      return;
+    }
+    const requestVersion = timelineRequestVersion.current + 1;
+    timelineRequestVersion.current = requestVersion;
+    let cancelled = false;
+    void (async () => {
+      const result = await getTimelinePage({
+        environmentId: selectedThreadShell.environmentId,
+        input: { threadId: selectedThreadShell.id, limit: 100 },
+      });
+      if (
+        cancelled ||
+        requestVersion !== timelineRequestVersion.current ||
+        result._tag !== "Success"
+      ) {
+        return;
+      }
+      setExternalTimelinePage((existing) => {
+        const merged = mergeTimelinePages({
+          existing,
+          page: result.value,
+          threadId: selectedThreadShell.id,
+        });
+        return existing?.threadId === selectedThreadShell.id
+          ? { ...merged, nextCursor: existing.nextCursor }
+          : merged;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    getTimelinePage,
+    selectedThreadShell?.environmentId,
+    selectedThreadShell?.externalSession?.lastSyncedAt,
+    selectedThreadShell?.externalSession?.sourceId,
+    selectedThreadShell?.externalSession?.state,
+    selectedThreadShell?.id,
+  ]);
+
+  const selectedThreadFeed = useMemo(() => {
+    if (!selectedThreadDetail) {
+      return [];
+    }
+    if (externalTimelinePage?.threadId !== selectedThreadDetail.id) {
+      return buildThreadFeed(selectedThreadDetail);
+    }
+    const messages = new Map(
+      externalTimelinePage.items.flatMap((item) =>
+        item.kind === "message" ? [[item.message.id, item.message] as const] : [],
+      ),
+    );
+    for (const message of selectedThreadDetail.messages) {
+      if (message.provenance?.origin !== "claude-code-jsonl") {
+        messages.set(message.id, message);
+      }
+    }
+    const activities = new Map(
+      externalTimelinePage.items.flatMap((item) =>
+        item.kind === "activity" ? [[item.activity.id, item.activity] as const] : [],
+      ),
+    );
+    for (const activity of selectedThreadDetail.activities) {
+      if (activity.provenance?.origin !== "claude-code-jsonl") {
+        activities.set(activity.id, activity);
+      }
+    }
+    return buildThreadFeed({
+      ...selectedThreadDetail,
+      messages: [...messages.values()],
+      activities: [...activities.values()],
+    });
+  }, [externalTimelinePage, selectedThreadDetail]);
 
   const selectedDraft = selectedThreadKey ? composerDrafts[selectedThreadKey] : null;
   const draftMessage = selectedDraft?.text ?? "";
@@ -143,6 +255,15 @@ export function useThreadComposerState() {
     const text = draft.text.trim();
     const attachments = draft.attachments;
     if (text.length === 0 && attachments.length === 0) {
+      return null;
+    }
+    if (
+      thread.externalSession?.state === "failed" ||
+      thread.externalSession?.state === "desynced"
+    ) {
+      setPendingConnectionError(
+        `Attached Claude session source is ${thread.externalSession.state}; synchronize or repair it before continuing.`,
+      );
       return null;
     }
 
@@ -289,8 +410,48 @@ export function useThreadComposerState() {
     [selectedThreadKey],
   );
 
+  const loadOlderHistory = useCallback(async () => {
+    if (
+      !selectedThreadShell?.externalSession ||
+      externalTimelinePage?.threadId !== selectedThreadShell.id ||
+      externalTimelinePage.nextCursor === null
+    ) {
+      return;
+    }
+    const requestVersion = timelineRequestVersion.current;
+    setIsLoadingOlderHistory(true);
+    try {
+      const result = await getTimelinePage({
+        environmentId: selectedThreadShell.environmentId,
+        input: {
+          threadId: selectedThreadShell.id,
+          beforeCursor: externalTimelinePage.nextCursor,
+          limit: 100,
+        },
+      });
+      if (result._tag !== "Success" || requestVersion !== timelineRequestVersion.current) {
+        return;
+      }
+      setExternalTimelinePage((existing) =>
+        mergeTimelinePages({
+          existing,
+          page: result.value,
+          threadId: selectedThreadShell.id,
+        }),
+      );
+    } finally {
+      setIsLoadingOlderHistory(false);
+    }
+  }, [externalTimelinePage, getTimelinePage, selectedThreadShell]);
+
   return {
     selectedThreadFeed,
+    canLoadOlderHistory:
+      selectedThreadShell?.externalSession !== undefined &&
+      externalTimelinePage?.threadId === selectedThreadShell.id &&
+      externalTimelinePage.nextCursor !== null,
+    isLoadingOlderHistory,
+    loadOlderHistory,
     selectedThreadQueueCount,
     activeWorkStartedAt,
     draftMessage,

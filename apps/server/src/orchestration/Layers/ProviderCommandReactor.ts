@@ -434,6 +434,16 @@ const make = Effect.gen(function* () {
       });
     }
     const preferredProvider: ProviderDriverKind = desiredDriverKind;
+    if (
+      thread.externalSession !== undefined &&
+      desiredInstanceId !== thread.externalSession.providerInstanceId
+    ) {
+      return yield* new ProviderAdapterRequestError({
+        provider: preferredProvider,
+        method: "thread.turn.start",
+        detail: `Thread '${threadId}' is attached to native Claude instance '${thread.externalSession.providerInstanceId}' and cannot switch to '${desiredInstanceId}'.`,
+      });
+    }
     if (options?.pendingTurnStart === true && thread.session?.status !== "running") {
       yield* setThreadSession({
         threadId,

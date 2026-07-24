@@ -1057,6 +1057,15 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           });
         }
       }
+      for (const deduplicated of command.deduplicatedMessages ?? []) {
+        const target = thread.messages.find((message) => message.id === deduplicated.messageId);
+        if (target === undefined || target.provenance?.origin === "claude-code-jsonl") {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: "Deduplicated Claude JSONL messages must target an existing live T3 message.",
+          });
+        }
+      }
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",
@@ -1069,6 +1078,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           sourceId: command.sourceId,
           items: command.items,
+          ...(command.deduplicatedMessages === undefined
+            ? {}
+            : { deduplicatedMessages: command.deduplicatedMessages }),
           expectedCheckpointRevision: command.expectedCheckpointRevision,
           checkpoint: command.checkpoint,
         },

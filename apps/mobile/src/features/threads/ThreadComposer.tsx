@@ -582,7 +582,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.onUpdateModelSelection(selectedModelSelection);
   }, [currentModelSelection, props.onUpdateModelSelection, selectedModelSelection]);
 
-  const canSend = hasContent && selectedModelSelection !== null;
+  const externalSessionBlocked =
+    props.selectedThread.externalSession?.state === "failed" ||
+    props.selectedThread.externalSession?.state === "desynced";
+  const canSend = hasContent && selectedModelSelection !== null && !externalSessionBlocked;
   const activeModelSelection = selectedModelSelection ?? currentModelSelection;
   const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
   const currentModelOption =
