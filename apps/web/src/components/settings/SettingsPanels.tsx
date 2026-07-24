@@ -35,6 +35,7 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
+import { isLocalBackendAvailable } from "../../desktopRuntimeCapabilities";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useTheme } from "../../hooks/useTheme";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
@@ -487,6 +488,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 }
 
 export function GeneralSettingsPanel() {
+  const localBackendAvailable = isLocalBackendAvailable();
   const { theme, setTheme } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
@@ -652,6 +654,7 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          className={localBackendAvailable ? undefined : "hidden"}
           title="Assistant output"
           description="Show token-by-token output while a response is in progress."
           resetAction={
@@ -679,6 +682,7 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          className={localBackendAvailable ? undefined : "hidden"}
           title="Provider update checks"
           description="Check installed provider CLIs for newer available versions."
           resetAction={
@@ -732,6 +736,7 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          className={localBackendAvailable ? undefined : "hidden"}
           title="New threads"
           description="Pick the default workspace mode for newly created draft threads."
           resetAction={
@@ -778,7 +783,7 @@ export function GeneralSettingsPanel() {
 
         {settings.defaultThreadEnvMode === "worktree" ? (
           <SettingsRow
-            className="bg-muted/20 sm:pl-9"
+            className={localBackendAvailable ? "bg-muted/20 sm:pl-9" : "hidden"}
             title="Start from origin"
             description="Creates the worktree from the latest matching branch on origin instead of your local branch."
             resetAction={
@@ -808,6 +813,7 @@ export function GeneralSettingsPanel() {
         ) : null}
 
         <SettingsRow
+          className={localBackendAvailable ? undefined : "hidden"}
           title="Add project starts in"
           description='Leave empty to use "~/" when the Add Project browser opens.'
           resetAction={
@@ -888,6 +894,7 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          className={localBackendAvailable ? undefined : "hidden"}
           title="Text generation model"
           description="Configure the model used for generated commit messages, PR titles, and similar Git text."
           resetAction={
@@ -972,6 +979,7 @@ export function GeneralSettingsPanel() {
           />
         )}
         <SettingsRow
+          className={localBackendAvailable ? undefined : "hidden"}
           title="Diagnostics"
           description={diagnosticsDescription}
           control={
@@ -1275,6 +1283,19 @@ export function ProviderSettingsPanel() {
       favorites: withoutProviderInstanceFavorites(settings.favorites ?? [], defaultInstanceId),
     });
   };
+
+  if (!isLocalBackendAvailable()) {
+    return (
+      <SettingsPageContainer>
+        <SettingsSection title="Providers">
+          <SettingsRow
+            title="Managed by the selected remote environment"
+            description="Remote-only mode uses each environment's provider snapshot. Configure provider settings where that environment is hosted."
+          />
+        </SettingsSection>
+      </SettingsPageContainer>
+    );
+  }
 
   return (
     <SettingsPageContainer>

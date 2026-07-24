@@ -2,7 +2,11 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { CloudIcon, MonitorIcon } from "lucide-react";
 import { memo, useMemo } from "react";
 
-import type { EnvironmentOption } from "./BranchToolbar.logic";
+import {
+  isRemoteOnlyDesktop,
+  REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM,
+} from "../desktopRuntimeCapabilities";
+import { filterSelectableEnvironments, type EnvironmentOption } from "./BranchToolbar.logic";
 import {
   Select,
   SelectGroup,
@@ -30,13 +34,27 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
     return availableEnvironments.find((env) => env.environmentId === environmentId) ?? null;
   }, [availableEnvironments, environmentId]);
 
+  const remoteOnly = isRemoteOnlyDesktop();
+  const selectableEnvironments = useMemo(
+    () => filterSelectableEnvironments(availableEnvironments, remoteOnly),
+    [availableEnvironments, remoteOnly],
+  );
   const environmentItems = useMemo(
-    () =>
-      availableEnvironments.map((env) => ({
+    () => [
+      ...(remoteOnly
+        ? [
+            {
+              value: REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM,
+              label: "This device (unavailable)",
+            },
+          ]
+        : []),
+      ...selectableEnvironments.map((env) => ({
         value: env.environmentId,
         label: env.label,
       })),
-    [availableEnvironments],
+    ],
+    [remoteOnly, selectableEnvironments],
   );
 
   if (envLocked) {
@@ -56,7 +74,11 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
     <Select
       modal={false}
       value={environmentId}
-      onValueChange={(value) => onEnvironmentChange(value as EnvironmentId)}
+      onValueChange={(value) => {
+        if (value !== REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM) {
+          onEnvironmentChange(value as EnvironmentId);
+        }
+      }}
       items={environmentItems}
     >
       <SelectTrigger variant="ghost" size="xs" className="font-medium" aria-label="Run on">
@@ -70,7 +92,18 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
       <SelectPopup>
         <SelectGroup>
           <SelectGroupLabel>Run on</SelectGroupLabel>
-          {availableEnvironments.map((env) => (
+          {remoteOnly ? (
+            <SelectItem disabled hideIndicator value={REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM}>
+              <span className="inline-flex items-center gap-1.5">
+                <MonitorIcon className="size-3" />
+                This device
+              </span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                Unavailable in remote-only mode
+              </span>
+            </SelectItem>
+          ) : null}
+          {selectableEnvironments.map((env) => (
             <SelectItem key={env.environmentId} value={env.environmentId}>
               <span className="inline-flex items-center gap-1.5">
                 {env.isPrimary ? (

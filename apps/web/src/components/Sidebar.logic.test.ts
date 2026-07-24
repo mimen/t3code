@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   createThreadJumpHintVisibilityController,
+  filterDesktopLocalSidebarItems,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
   resolveAdjacentThreadId,
@@ -37,6 +38,30 @@ import {
 } from "../types";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+const localSecondaryEnvironmentId = EnvironmentId.make("environment-local-secondary");
+const remoteEnvironmentId = EnvironmentId.make("environment-remote");
+
+describe("filterDesktopLocalSidebarItems", () => {
+  const items = [
+    { environmentId: localEnvironmentId, id: "local" },
+    { environmentId: localSecondaryEnvironmentId, id: "local-secondary" },
+    { environmentId: remoteEnvironmentId, id: "remote" },
+  ] as const;
+  const desktopLocalEnvironmentIds = new Set<string>([
+    localEnvironmentId,
+    localSecondaryEnvironmentId,
+  ]);
+
+  it("preserves every item outside remote-only mode", () => {
+    expect(filterDesktopLocalSidebarItems(items, false, desktopLocalEnvironmentIds)).toEqual(items);
+  });
+
+  it("hides primary and secondary desktop-local items in remote-only mode", () => {
+    expect(filterDesktopLocalSidebarItems(items, true, desktopLocalEnvironmentIds)).toEqual([
+      items[2],
+    ]);
+  });
+});
 
 describe("resolveSidebarStageBadgeLabel", () => {
   it("returns Nightly for nightly primary server versions", () => {

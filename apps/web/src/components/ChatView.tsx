@@ -66,6 +66,7 @@ import {
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { isElectron } from "../env";
+import { isRemoteOnlyDesktop } from "../desktopRuntimeCapabilities";
 import { readLocalApi } from "../localApi";
 import { useDiffPanelStore } from "../diffPanelStore";
 import {
@@ -1626,7 +1627,7 @@ function ChatViewContent(props: ChatViewProps) {
     });
     return envs;
   }, [activeProject, allProjects, projectGroupingSettings, primaryEnvironmentId, environmentById]);
-  const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
+  const hasMultipleEnvironments = isRemoteOnlyDesktop() || logicalProjectEnvironments.length > 1;
 
   const openPullRequestDialog = useCallback(
     (reference?: string) => {

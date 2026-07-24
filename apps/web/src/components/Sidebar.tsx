@@ -111,6 +111,7 @@ import { readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
+import { isRemoteOnlyDesktop } from "../desktopRuntimeCapabilities";
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import { projectEnvironment } from "../state/projects";
@@ -185,6 +186,7 @@ import {
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
 import {
+  filterDesktopLocalSidebarItems,
   getSidebarThreadIdsToPrewarm,
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
@@ -3161,6 +3163,7 @@ export default function Sidebar() {
   const shortcutModifiers = useShortcutModifierState();
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const remoteOnlyDesktop = isRemoteOnlyDesktop();
   const environmentLabelById = useMemo(
     () =>
       new Map(
@@ -3168,18 +3171,29 @@ export default function Sidebar() {
       ),
     [environments],
   );
-  const desktopLocalEnvironmentIds = useMemo(
+  const desktopLocalEnvironmentIds = useMemo(() => {
+    const environmentIds = new Set(
+      environments
+        .filter((environment) => isDesktopLocalConnectionTarget(environment.entry.target))
+        .map((environment) => environment.environmentId),
+    );
+    if (primaryEnvironmentId !== null) {
+      environmentIds.add(primaryEnvironmentId);
+    }
+    return environmentIds;
+  }, [environments, primaryEnvironmentId]);
+  const remoteOnlyProjects = useMemo(
+    () => filterDesktopLocalSidebarItems(projects, remoteOnlyDesktop, desktopLocalEnvironmentIds),
+    [desktopLocalEnvironmentIds, projects, remoteOnlyDesktop],
+  );
+  const remoteOnlyThreads = useMemo(
     () =>
-      new Set(
-        environments
-          .filter((environment) => isDesktopLocalConnectionTarget(environment.entry.target))
-          .map((environment) => environment.environmentId),
-      ),
-    [environments],
+      filterDesktopLocalSidebarItems(sidebarThreads, remoteOnlyDesktop, desktopLocalEnvironmentIds),
+    [desktopLocalEnvironmentIds, remoteOnlyDesktop, sidebarThreads],
   );
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
-      items: projects,
+      items: remoteOnlyProjects,
       preferredIds: projectOrder,
       getId: getProjectOrderKey,
       getPreferenceIds: (project) => [
@@ -3187,7 +3201,7 @@ export default function Sidebar() {
         legacyProjectCwdPreferenceKey(project.workspaceRoot),
       ],
     });
-  }, [projectOrder, projects]);
+  }, [projectOrder, remoteOnlyProjects]);
 
   // Build a mapping from physical project key → logical project key for
   // cross-environment grouping.  Projects that share a repositoryIdentity
@@ -3233,12 +3247,12 @@ export default function Sidebar() {
   const sidebarThreadByKey = useMemo(
     () =>
       new Map(
-        sidebarThreads.map(
+        remoteOnlyThreads.map(
           (thread) =>
             [scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread] as const,
         ),
       ),
-    [sidebarThreads],
+    [remoteOnlyThreads],
   );
   // Resolve the active route's project key to a logical key so it matches the
   // sidebar's grouped project entries.
@@ -3259,7 +3273,7 @@ export default function Sidebar() {
   // are displayed together.
   const threadsByProjectKey = useMemo(() => {
     const next = new Map<string, SidebarThreadSummary[]>();
-    for (const thread of sidebarThreads) {
+    for (const thread of remoteOnlyThreads) {
       const physicalKey =
         projectPhysicalKeyByScopedRef.get(
           scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
@@ -3273,7 +3287,7 @@ export default function Sidebar() {
       }
     }
     return next;
-  }, [sidebarThreads, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
+  }, [remoteOnlyThreads, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
   const getCurrentSidebarShortcutContext = useCallback(
     () => ({
       terminalFocus: isTerminalFocused(),
@@ -3382,8 +3396,8 @@ export default function Sidebar() {
   }, []);
 
   const visibleThreads = useMemo(
-    () => sidebarThreads.filter((thread) => thread.archivedAt === null),
-    [sidebarThreads],
+    () => remoteOnlyThreads.filter((thread) => thread.archivedAt === null),
+    [remoteOnlyThreads],
   );
   const sortedProjects = useMemo(() => {
     const sortableProjects = sidebarProjects.map((project) => ({
@@ -3755,7 +3769,7 @@ export default function Sidebar() {
             suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
             suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
             attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
-            projectsLength={projects.length}
+            projectsLength={remoteOnlyProjects.length}
           />
 
           <SidebarSeparator />

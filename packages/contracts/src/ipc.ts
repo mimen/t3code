@@ -956,8 +956,19 @@ export const DesktopPreviewAutomationWaitForInputSchema = Schema.Struct({
   input: PreviewAutomationWaitForInput,
 });
 
+export const DesktopExecutionModeSchema = Schema.Literals(["full", "remote-only"]);
+export type DesktopExecutionMode = typeof DesktopExecutionModeSchema.Type;
+
+export const DesktopRuntimeCapabilitiesSchema = Schema.Struct({
+  executionMode: DesktopExecutionModeSchema,
+  localBackendAvailable: Schema.Boolean,
+});
+export type DesktopRuntimeCapabilities = typeof DesktopRuntimeCapabilitiesSchema.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
+  getRuntimeCapabilities: () => DesktopRuntimeCapabilities;
+  setExecutionMode: (mode: DesktopExecutionMode) => Promise<void>;
   // One bootstrap per pool instance currently registered with bootstrap
   // info (omits instances whose backend hasn't produced a config yet).
   // The primary backend is identified by id === PRIMARY_LOCAL_ENVIRONMENT_ID.

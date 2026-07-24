@@ -250,6 +250,7 @@ describe("DesktopServerExposure", () => {
     const settingsLayer = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
       get: Effect.succeed(DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS),
       load: Effect.succeed(DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS),
+      setExecutionMode: () => Effect.die("unexpected execution mode change"),
       setServerExposureMode: () => Effect.fail(settingsFailure),
       setTailscaleServe: () => Effect.fail(settingsFailure),
       setUpdateChannel: () => Effect.die("unexpected update channel change"),

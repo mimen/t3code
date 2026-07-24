@@ -11,9 +11,14 @@ import {
 import { memo, useMemo } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
+import {
+  isRemoteOnlyDesktop,
+  REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM,
+} from "../desktopRuntimeCapabilities";
 import { useProject, useThread } from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import {
+  filterSelectableEnvironments,
   type EnvMode,
   type EnvironmentOption,
   resolveCurrentWorkspaceLabel,
@@ -81,6 +86,11 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     () => availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null,
     [availableEnvironments, environmentId],
   );
+  const remoteOnly = isRemoteOnlyDesktop();
+  const selectableEnvironments = useMemo(
+    () => filterSelectableEnvironments(availableEnvironments ?? [], remoteOnly),
+    [availableEnvironments, remoteOnly],
+  );
   const WorkspaceIcon =
     effectiveEnvMode === "worktree"
       ? FolderGit2Icon
@@ -137,9 +147,24 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
               <MenuGroupLabel>Run on</MenuGroupLabel>
               <MenuRadioGroup
                 value={environmentId}
-                onValueChange={(value) => onEnvironmentChange(value as EnvironmentId)}
+                onValueChange={(value) => {
+                  if (value !== REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM) {
+                    onEnvironmentChange(value as EnvironmentId);
+                  }
+                }}
               >
-                {availableEnvironments.map((env) => {
+                {remoteOnly ? (
+                  <MenuRadioItem disabled value={REMOTE_ONLY_LOCAL_ENVIRONMENT_ITEM}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <MonitorIcon className="size-3" />
+                      <span className="min-w-0 truncate">This device</span>
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      Unavailable in remote-only mode
+                    </span>
+                  </MenuRadioItem>
+                ) : null}
+                {selectableEnvironments.map((env) => {
                   const Icon = env.isPrimary ? MonitorIcon : CloudIcon;
                   return (
                     <MenuRadioItem
@@ -231,8 +256,11 @@ export const BranchToolbar = memo(function BranchToolbar({
     });
   const envModeLocked = envLocked || (serverThread !== null && activeWorktreePath !== null);
 
+  const remoteOnlyDesktop = isRemoteOnlyDesktop();
   const showEnvironmentPicker = Boolean(
-    availableEnvironments && availableEnvironments.length > 1 && onEnvironmentChange,
+    availableEnvironments &&
+    onEnvironmentChange &&
+    (remoteOnlyDesktop || availableEnvironments.length > 1),
   );
   const isMobile = useIsMobile();
 

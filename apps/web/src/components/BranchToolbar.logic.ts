@@ -12,6 +12,13 @@ export interface EnvironmentOption {
   isPrimary: boolean;
 }
 
+export function filterSelectableEnvironments(
+  environments: readonly EnvironmentOption[],
+  remoteOnly: boolean,
+): readonly EnvironmentOption[] {
+  return remoteOnly ? environments.filter((environment) => !environment.isPrimary) : environments;
+}
+
 export const EnvMode = Schema.Literals(["local", "worktree"]);
 export type EnvMode = typeof EnvMode.Type;
 

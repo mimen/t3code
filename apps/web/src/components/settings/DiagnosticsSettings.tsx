@@ -21,6 +21,7 @@ import type {
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
+import { isLocalBackendAvailable } from "../../desktopRuntimeCapabilities";
 import { cn } from "../../lib/utils";
 import { resolveAndPersistPreferredEditor } from "../../editorPreferences";
 import { formatRelativeTimeLabel, getRelativeTimeState } from "../../timestampFormat";
@@ -955,6 +956,16 @@ export function DiagnosticsSettingsPanel() {
   const traceDiagnosticsPartialFailure = data
     ? Option.getOrElse(data.partialFailure, () => false)
     : false;
+
+  if (!isLocalBackendAvailable()) {
+    return (
+      <SettingsPageContainer>
+        <SettingsSection title="Diagnostics">
+          <EmptyRows label="Local diagnostics are unavailable in remote-only mode. Connect to the remote environment to inspect its diagnostics." />
+        </SettingsSection>
+      </SettingsPageContainer>
+    );
+  }
 
   return (
     <SettingsPageContainer>

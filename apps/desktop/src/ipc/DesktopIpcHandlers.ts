@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 
 import * as DesktopIpc from "./DesktopIpc.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
+import { getRuntimeCapabilities, setExecutionMode } from "./methods/executionMode.ts";
 import {
   clearConnectionCatalog,
   getConnectionCatalog,
@@ -49,6 +50,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* PreviewIpc.installPreviewEventForwarding();
 
   yield* ipc.handleSync(getAppBranding);
+  yield* ipc.handleSync(getRuntimeCapabilities);
+  yield* ipc.handle(setExecutionMode);
   yield* ipc.handleSync(getWindowFullscreenState);
   yield* ipc.handleSync(getLocalEnvironmentBootstraps);
   yield* ipc.handle(getLocalEnvironmentBearerToken);

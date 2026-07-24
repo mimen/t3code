@@ -11,6 +11,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopAppSettings from "./DesktopAppSettings.ts";
 
 const DesktopSettingsPatch = Schema.Struct({
+  executionMode: Schema.optionalKey(Schema.Literals(["full", "remote-only"])),
   serverExposureMode: Schema.optionalKey(Schema.Literals(["local-only", "network-accessible"])),
   tailscaleServeEnabled: Schema.optionalKey(Schema.Boolean),
   tailscaleServePort: Schema.optionalKey(Schema.Number),
@@ -91,6 +92,7 @@ describe("DesktopSettings", () => {
     assert.deepEqual(
       DesktopAppSettings.resolveDefaultDesktopSettings("0.0.17-nightly.20260415.1"),
       {
+        executionMode: "full",
         serverExposureMode: "local-only",
         tailscaleServeEnabled: false,
         tailscaleServePort: 443,
@@ -116,6 +118,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          executionMode: "full",
           serverExposureMode: "network-accessible",
           tailscaleServeEnabled: true,
           tailscaleServePort: 8443,
@@ -219,6 +222,7 @@ describe("DesktopSettings", () => {
         );
 
         assert.deepEqual(yield* settings.load, {
+          executionMode: "full",
           serverExposureMode: "network-accessible",
           tailscaleServeEnabled: true,
           tailscaleServePort: 8443,
@@ -261,6 +265,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          executionMode: "full",
           serverExposureMode: "local-only",
           tailscaleServeEnabled: false,
           tailscaleServePort: 443,
@@ -286,6 +291,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          executionMode: "full",
           serverExposureMode: "local-only",
           tailscaleServeEnabled: false,
           tailscaleServePort: 443,
@@ -310,6 +316,7 @@ describe("DesktopSettings", () => {
         });
 
         assert.deepEqual(yield* settings.load, {
+          executionMode: "full",
           serverExposureMode: "local-only",
           tailscaleServeEnabled: true,
           tailscaleServePort: 443,

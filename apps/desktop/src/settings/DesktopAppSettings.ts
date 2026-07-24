@@ -1,6 +1,8 @@
 import {
+  DesktopExecutionModeSchema,
   DesktopServerExposureModeSchema,
   DesktopUpdateChannelSchema,
+  type DesktopExecutionMode,
   type DesktopServerExposureMode,
   type DesktopUpdateChannel,
 } from "@t3tools/contracts";
@@ -20,6 +22,7 @@ import { resolveDefaultDesktopUpdateChannel } from "../updates/updateChannels.ts
 import { isValidDistroName } from "../wsl/wslPathParsing.ts";
 
 export interface DesktopSettings {
+  readonly executionMode: DesktopExecutionMode;
   readonly serverExposureMode: DesktopServerExposureMode;
   readonly tailscaleServeEnabled: boolean;
   readonly tailscaleServePort: number;
@@ -50,6 +53,7 @@ export interface DesktopSettingsChange {
 export const DEFAULT_TAILSCALE_SERVE_PORT = 443;
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
+  executionMode: "full",
   serverExposureMode: "local-only",
   tailscaleServeEnabled: false,
   tailscaleServePort: DEFAULT_TAILSCALE_SERVE_PORT,
@@ -61,6 +65,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
 };
 
 const DesktopSettingsDocument = Schema.Struct({
+  executionMode: Schema.optionalKey(DesktopExecutionModeSchema),
   serverExposureMode: Schema.optionalKey(DesktopServerExposureModeSchema),
   tailscaleServeEnabled: Schema.optionalKey(Schema.Boolean),
   tailscaleServePort: Schema.optionalKey(Schema.Number),
@@ -114,6 +119,9 @@ export class DesktopAppSettings extends Context.Service<
   {
     readonly load: Effect.Effect<DesktopSettings>;
     readonly get: Effect.Effect<DesktopSettings>;
+    readonly setExecutionMode: (
+      mode: DesktopExecutionMode,
+    ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly setServerExposureMode: (
       mode: DesktopServerExposureMode,
     ) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
@@ -177,6 +185,7 @@ function normalizeDesktopSettingsDocument(
     (parsed.wslBackendEnabled === undefined && parsed.wslMode === "wsl");
 
   return {
+    executionMode: parsed.executionMode === "remote-only" ? "remote-only" : "full",
     serverExposureMode:
       parsed.serverExposureMode === "network-accessible" ? "network-accessible" : "local-only",
     tailscaleServeEnabled: parsed.tailscaleServeEnabled === true,
@@ -197,6 +206,9 @@ function toDesktopSettingsDocument(
 ): DesktopSettingsDocument {
   const document: Mutable<DesktopSettingsDocument> = {};
 
+  if (settings.executionMode !== defaults.executionMode) {
+    document.executionMode = settings.executionMode;
+  }
   if (settings.serverExposureMode !== defaults.serverExposureMode) {
     document.serverExposureMode = settings.serverExposureMode;
   }
@@ -223,6 +235,18 @@ function toDesktopSettingsDocument(
   }
 
   return document;
+}
+
+function setExecutionMode(
+  settings: DesktopSettings,
+  requestedMode: DesktopExecutionMode,
+): DesktopSettings {
+  return settings.executionMode === requestedMode
+    ? settings
+    : {
+        ...settings,
+        executionMode: requestedMode,
+      };
 }
 
 function setServerExposureMode(
@@ -431,6 +455,10 @@ export const make = Effect.gen(function* () {
       );
       return yield* SynchronizedRef.setAndGet(settingsRef, settings);
     }).pipe(Effect.withSpan("desktop.settings.load")),
+    setExecutionMode: (mode) =>
+      persist((settings) => setExecutionMode(settings, mode)).pipe(
+        Effect.withSpan("desktop.settings.setExecutionMode", { attributes: { mode } }),
+      ),
     setServerExposureMode: (mode) =>
       persist((settings) => setServerExposureMode(settings, mode)).pipe(
         Effect.withSpan("desktop.settings.setServerExposureMode", { attributes: { mode } }),
@@ -488,6 +516,7 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
       return DesktopAppSettings.of({
         get: SynchronizedRef.get(settingsRef),
         load: SynchronizedRef.get(settingsRef),
+        setExecutionMode: (mode) => update((settings) => setExecutionMode(settings, mode)),
         setServerExposureMode: (mode) =>
           update((settings) => setServerExposureMode(settings, mode)),
         setTailscaleServe: (input) => update((settings) => setTailscaleServe(settings, input)),

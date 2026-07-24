@@ -24,6 +24,7 @@ import {
   type AuthPairingLink,
   type AdvertisedEndpoint,
   type DesktopDiscoveredSshHost,
+  type DesktopExecutionMode,
   type DesktopSshEnvironmentTarget,
   type DesktopServerExposureState,
   type DesktopWslState,
@@ -37,6 +38,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
+import { isLocalBackendAvailable } from "../../desktopRuntimeCapabilities";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
 import { formatElapsedDurationLabel, formatExpiresInLabel } from "../../timestampFormat";
@@ -1702,6 +1704,8 @@ function CloudRemoteEnvironmentRows({
 
 export function ConnectionsSettings() {
   const desktopBridge = window.desktopBridge;
+  const executionMode = desktopBridge?.getRuntimeCapabilities?.().executionMode ?? "full";
+  const localBackendAvailable = isLocalBackendAvailable();
   const { environments } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
   const connectPairing = useAtomCommand(connectPairingAtom, { reportFailure: false });
@@ -1762,6 +1766,7 @@ export function ConnectionsSettings() {
   }, [savedEnvironments]);
   const [sshConnectionError, setSshConnectionError] = useState<string | null>(null);
   const [connectingSshHostAlias, setConnectingSshHostAlias] = useState<string | null>(null);
+  const [isChangingExecutionMode, setIsChangingExecutionMode] = useState(false);
 
   const [desktopServerExposureMutationError, setDesktopServerExposureMutationError] = useState<
     string | null
@@ -1832,7 +1837,8 @@ export function ConnectionsSettings() {
   const setDefaultAdvertisedEndpointKey = useUiStateStore(
     (state) => state.setDefaultAdvertisedEndpointKey,
   );
-  const canManageLocalBackend = currentSessionScopes?.includes(AuthAccessWriteScope) ?? false;
+  const canManageLocalBackend =
+    localBackendAvailable && (currentSessionScopes?.includes(AuthAccessWriteScope) ?? false);
   const canManageRelay = currentSessionScopes?.includes(AuthRelayWriteScope) ?? false;
   const authAccessChanges = useEnvironmentQuery(
     canManageLocalBackend && primaryEnvironmentId !== null
@@ -2966,8 +2972,89 @@ export function ConnectionsSettings() {
     />
   );
 
+  const handleExecutionModeChange = useCallback(
+    (nextMode: DesktopExecutionMode) => {
+      if (
+        !desktopBridge?.setExecutionMode ||
+        nextMode === executionMode ||
+        isChangingExecutionMode
+      ) {
+        return;
+      }
+
+      const targetLabel = nextMode === "remote-only" ? "remote-only" : "full";
+      if (
+        !window.confirm(
+          `Switch this device to ${targetLabel} mode? This only changes which environments are available in the UI; the local backend keeps running.`,
+        )
+      ) {
+        return;
+      }
+
+      setIsChangingExecutionMode(true);
+      void desktopBridge
+        .setExecutionMode(nextMode)
+        .catch((error: unknown) => {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Could not change execution mode",
+              description:
+                error instanceof Error
+                  ? error.message
+                  : "Execution mode change failed. Add a saved remote environment before enabling remote-only mode.",
+            }),
+          );
+        })
+        .finally(() => {
+          setIsChangingExecutionMode(false);
+        });
+    },
+    [desktopBridge, executionMode, isChangingExecutionMode],
+  );
+
   return (
     <SettingsPageContainer>
+      {desktopBridge?.setExecutionMode ? (
+        <SettingsSection title="Desktop">
+          <SettingsRow
+            title="Execution mode"
+            description={
+              executionMode === "remote-only"
+                ? "This device's local backend remains available but is blocked in the UI. Use a saved remote environment for projects, threads, and models."
+                : "This app can use this device's local backend. Remote-only mode keeps the backend running but blocks local work in the UI."
+            }
+            control={
+              <Select
+                value={executionMode}
+                onValueChange={(value) => {
+                  if (value === "full" || value === "remote-only") {
+                    handleExecutionModeChange(value);
+                  }
+                }}
+              >
+                <SelectTrigger
+                  className="w-full sm:w-40"
+                  aria-label="Desktop execution mode"
+                  disabled={isChangingExecutionMode}
+                >
+                  <SelectValue>
+                    {executionMode === "remote-only" ? "Remote only" : "Full"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem hideIndicator value="full">
+                    Full
+                  </SelectItem>
+                  <SelectItem hideIndicator value="remote-only">
+                    Remote only
+                  </SelectItem>
+                </SelectPopup>
+              </Select>
+            }
+          />
+        </SettingsSection>
+      ) : null}
       {canManageLocalBackend ? (
         <>
           <SettingsSection title="This environment">
@@ -3286,7 +3373,7 @@ export function ConnectionsSettings() {
             </DialogPopup>
           </Dialog>
         </>
-      ) : (
+      ) : localBackendAvailable ? (
         <SettingsSection title="This environment">
           <SettingsRow
             title="Administrative access"
@@ -3294,7 +3381,7 @@ export function ConnectionsSettings() {
           />
           <CloudLinkRow canManageRelay={canManageRelay} />
         </SettingsSection>
-      )}
+      ) : null}
 
       <SettingsSection
         title="Remote environments"

@@ -29,6 +29,7 @@ import {
   FolderPlusIcon,
   LinkIcon,
   MessageSquareIcon,
+  MonitorIcon,
   SettingsIcon,
   SquarePenIcon,
 } from "lucide-react";
@@ -47,6 +48,7 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { OpenAddProjectCommandPaletteProvider } from "../commandPaletteContext";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
+import { isRemoteOnlyDesktop } from "../desktopRuntimeCapabilities";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useClientSettings } from "../hooks/useSettings";
@@ -469,6 +471,7 @@ function OpenCommandPaletteDialog(props: {
     reportFailure: false,
   });
   const { environments } = useEnvironments();
+  const remoteOnlyDesktop = isRemoteOnlyDesktop();
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironment = usePrimaryEnvironment();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
@@ -502,15 +505,19 @@ function OpenCommandPaletteDialog(props: {
       };
     });
 
-    options.sort((left, right) => {
+    const selectableOptions = remoteOnlyDesktop
+      ? options.filter((option) => !option.isPrimary)
+      : options;
+
+    selectableOptions.sort((left, right) => {
       if (left.isPrimary !== right.isPrimary) {
         return left.isPrimary ? -1 : 1;
       }
       return left.label.localeCompare(right.label);
     });
 
-    return options;
-  }, [environments]);
+    return selectableOptions;
+  }, [environments, remoteOnlyDesktop]);
   const defaultAddProjectEnvironmentId = addProjectEnvironmentOptions[0]?.environmentId ?? null;
   const wslAddProjectEnvironmentOption = useMemo(
     () =>
@@ -897,20 +904,36 @@ function OpenCommandPaletteDialog(props: {
     [browseEnvironmentId, buildAddProjectSourceGroups, sourceControlDiscovery.data],
   );
 
-  const addProjectEnvironmentItems: CommandPaletteActionItem[] = addProjectEnvironmentOptions.map(
-    (option) => ({
-      kind: "action",
-      value: `action:add-project:environment:${option.environmentId}`,
-      searchTerms: [option.label, option.environmentId, option.isPrimary ? "this device" : ""],
-      title: option.label,
-      description: option.isPrimary ? "This device" : option.environmentId,
-      icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
-      keepOpen: true,
-      run: async () => {
-        startAddProjectSourceSelection(option.environmentId);
-      },
-    }),
-  );
+  const addProjectEnvironmentItems: CommandPaletteActionItem[] = [
+    ...(remoteOnlyDesktop
+      ? [
+          {
+            kind: "action" as const,
+            value: "action:add-project:environment:this-device-unavailable",
+            searchTerms: ["this device", "local", "unavailable"],
+            title: "This device",
+            description: "Unavailable in remote-only mode",
+            icon: <MonitorIcon className={ITEM_ICON_CLASS} />,
+            disabled: true,
+            run: async () => {},
+          },
+        ]
+      : []),
+    ...addProjectEnvironmentOptions.map(
+      (option): CommandPaletteActionItem => ({
+        kind: "action",
+        value: `action:add-project:environment:${option.environmentId}`,
+        searchTerms: [option.label, option.environmentId, option.isPrimary ? "this device" : ""],
+        title: option.label,
+        description: option.isPrimary ? "This device" : option.environmentId,
+        icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+        keepOpen: true,
+        run: async () => {
+          startAddProjectSourceSelection(option.environmentId);
+        },
+      }),
+    ),
+  ];
 
   const addProjectEnvironmentGroups = useMemo<CommandPaletteView["groups"]>(
     () => [
@@ -924,7 +947,7 @@ function OpenCommandPaletteDialog(props: {
   );
 
   const openAddProjectFlow = useCallback(() => {
-    if (addProjectEnvironmentOptions.length > 1) {
+    if (remoteOnlyDesktop || addProjectEnvironmentOptions.length > 1) {
       pushPaletteView({
         addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
         groups: addProjectEnvironmentGroups,
@@ -949,6 +972,7 @@ function OpenCommandPaletteDialog(props: {
     addProjectEnvironmentGroups,
     addProjectEnvironmentOptions.length,
     defaultAddProjectEnvironmentId,
+    remoteOnlyDesktop,
     startAddProjectSourceSelection,
   ]);
 

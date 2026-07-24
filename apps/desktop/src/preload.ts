@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     }
     return result as ReturnType<DesktopBridge["getAppBranding"]>;
   },
+  getRuntimeCapabilities: () =>
+    ipcRenderer.sendSync(IpcChannels.GET_RUNTIME_CAPABILITIES_CHANNEL) as ReturnType<
+      DesktopBridge["getRuntimeCapabilities"]
+    >,
+  setExecutionMode: (mode) => ipcRenderer.invoke(IpcChannels.SET_EXECUTION_MODE_CHANNEL, mode),
   getLocalEnvironmentBootstraps: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
     if (!Array.isArray(result)) {

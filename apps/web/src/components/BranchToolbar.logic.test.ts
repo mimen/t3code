@@ -1,8 +1,9 @@
-import { EnvironmentId, type VcsRef } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, type VcsRef } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,
+  filterSelectableEnvironments,
   resolveEnvironmentOptionLabel,
   resolveBranchSelectionTarget,
   resolveCurrentWorkspaceLabel,
@@ -81,6 +82,31 @@ describe("resolveBranchToolbarValue", () => {
         currentGitBranch: "main",
       }),
     ).toBe("main");
+  });
+});
+
+describe("filterSelectableEnvironments", () => {
+  const environments = [
+    {
+      environmentId: localEnvironmentId,
+      projectId: ProjectId.make("project-local"),
+      label: "This device",
+      isPrimary: true,
+    },
+    {
+      environmentId: remoteEnvironmentId,
+      projectId: ProjectId.make("project-remote"),
+      label: "Milad's Mac mini",
+      isPrimary: false,
+    },
+  ] as const;
+
+  it("keeps the primary environment in full mode", () => {
+    expect(filterSelectableEnvironments(environments, false)).toEqual(environments);
+  });
+
+  it("removes the primary environment in remote-only mode", () => {
+    expect(filterSelectableEnvironments(environments, true)).toEqual([environments[1]]);
   });
 });
 

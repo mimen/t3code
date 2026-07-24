@@ -34,6 +34,18 @@ type ScopedSidebarThread = ThreadSortInput & {
   archivedAt: string | null;
 };
 
+export function filterDesktopLocalSidebarItems<T extends { readonly environmentId: string }>(
+  items: readonly T[],
+  remoteOnly: boolean,
+  desktopLocalEnvironmentIds: ReadonlySet<string>,
+): readonly T[] {
+  if (!remoteOnly) {
+    return items;
+  }
+
+  return items.filter((item) => !desktopLocalEnvironmentIds.has(item.environmentId));
+}
+
 export type ThreadTraversalDirection = "previous" | "next";
 
 export interface ThreadStatusPill {
