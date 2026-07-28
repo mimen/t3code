@@ -80,8 +80,11 @@ it.layer(NodeServices.layer)("Mini claude-gpt provider", (it) => {
         return yield* Effect.die("Expected the claude-gpt provider instance.");
       }
       assert.strictEqual(claudeGpt.driver, "claudeAgent");
-      assert.strictEqual(claudeGpt.displayName, "Claude-GPT");
-      assert.strictEqual(claudeGpt.iconKey, "openai");
+      // Presentation reflects that this instance serves BOTH vendors through the
+      // local gateway; the instance id stays "claude-gpt" because
+      // ClaudeBinaryIntegrity requires a pinned CLI hash for exactly that id.
+      assert.strictEqual(claudeGpt.displayName, "Claude Code (local gateway)");
+      assert.strictEqual(claudeGpt.iconKey, "claude");
       assert.deepEqual(claudeGpt.environment, [
         {
           name: "ANTHROPIC_BASE_URL",

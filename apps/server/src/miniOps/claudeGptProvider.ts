@@ -238,11 +238,19 @@ export function buildClaudeGptProviderPatch(
   return {
     providerInstances: {
       ...current.providerInstances,
+      // NOTE: the instance id stays "claude-gpt" deliberately. It is not cosmetic —
+      // ClaudeBinaryIntegrity.ts branches on this exact id to REQUIRE a pinned Claude
+      // CLI SHA-256 for this instance. Renaming it silently reclassifies the instance
+      // as an ordinary Claude instance, for which pinning is optional. If it is ever
+      // renamed, the constant in ClaudeBinaryIntegrity.ts must move in the same commit.
+      // Display name and icon below are presentation only and safe to change.
       [CLAUDE_GPT_INSTANCE_ID]: {
         driver: CLAUDE_GPT_DRIVER,
-        displayName: "Claude-GPT",
+        // Serves both vendors now, so a vendor-specific label would mislead. The
+        // constant here is the harness (Claude Code) pointed at the local gateway.
+        displayName: "Claude Code (local gateway)",
         accentColor: "#10A37F",
-        iconKey: "openai",
+        iconKey: "claude",
         enabled: true,
         environment: [
           {
