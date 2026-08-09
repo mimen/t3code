@@ -223,6 +223,7 @@ function getAutoUpdateDisabledReason(args: {
   platform: NodeJS.Platform;
   appImage?: string | undefined;
   disabledByEnv: boolean;
+  disabledByProfile: boolean;
   hasUpdateFeedConfig: boolean;
 }): string | null {
   if (!args.hasUpdateFeedConfig) {
@@ -230,6 +231,9 @@ function getAutoUpdateDisabledReason(args: {
   }
   if (args.isDevelopment || !args.isPackaged) {
     return "Automatic updates are only available in packaged production builds.";
+  }
+  if (args.disabledByProfile) {
+    return "Automatic updates are disabled for the Fork Staging distribution.";
   }
   if (args.disabledByEnv) {
     return "Automatic updates are disabled by the T3CODE_DISABLE_AUTO_UPDATE setting.";
@@ -308,6 +312,7 @@ export const make = Effect.gen(function* () {
         platform: environment.platform,
         appImage: Option.getOrUndefined(config.appImagePath),
         disabledByEnv: config.disableAutoUpdate,
+        disabledByProfile: !environment.autoUpdatesEnabled,
         hasUpdateFeedConfig: hasFeedConfig,
       }),
     );

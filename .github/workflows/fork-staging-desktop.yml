@@ -1,0 +1,46 @@
+name: Build Fork Staging desktop
+
+on:
+  push:
+    branches:
+      - fork-staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-staging-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package Fork Staging macOS artifact
+    runs-on: blacksmith-12vcpu-macos-26
+    timeout-minutes: 30
+    environment: staging
+    env:
+      T3CODE_DESKTOP_PROFILE: fork-staging
+      T3CODE_DESKTOP_OUTPUT_DIR: release-fork-staging
+      T3CODE_DESKTOP_SIGNED: "false"
+    steps:
+      - name: Checkout exact staging SHA
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Package isolated Fork Staging app
+        run: vp run dist:desktop:artifact -- --profile fork-staging --platform mac --target dmg --arch arm64
+
+      - name: Upload immutable Fork Staging artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: fork-staging-${{ github.sha }}-mac-arm64
+          path: release-fork-staging/T3-Code-Fork-Staging-*
+          if-no-files-found: error
+          retention-days: 14

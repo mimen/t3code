@@ -40,6 +40,16 @@
         "buildType": "apk"
       }
     },
+    "staging": {
+      "corepack": true,
+      "env": {
+        "APP_VARIANT": "preview",
+        "NODE_OPTIONS": "--max-old-space-size=4096"
+      },
+      "channel": "staging",
+      "environment": "staging",
+      "distribution": "internal"
+    },
     "production": {
       "corepack": true,
       "env": {

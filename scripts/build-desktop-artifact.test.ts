@@ -89,6 +89,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
   });
 
+  it("uses an isolated identity when packaging Fork Staging", () => {
+    assert.equal(resolveDesktopProductName("0.0.17", "fork-staging"), "T3 Code (Fork Staging)");
+  });
+
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
     assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.17"), {
       macIconPng: BRAND_ASSET_PATHS.productionMacIconPng,
@@ -479,6 +483,32 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 
+  it.effect(
+    "packages Fork Staging with a distinct app, protocol, artifact, and no updater feed",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* createBuildConfig(
+          "mac",
+          "dmg",
+          "1.2.3",
+          false,
+          false,
+          undefined,
+          undefined,
+          "fork-staging",
+        );
+
+        assert.equal(config.appId, "com.t3tools.t3code.fork-staging");
+        assert.equal(config.productName, "T3 Code (Fork Staging)");
+        assert.equal(config.artifactName, "T3-Code-Fork-Staging-${version}-${arch}.${ext}");
+        assert.notProperty(config, "publish");
+        const mac = config.mac as Record<string, unknown>;
+        assert.deepStrictEqual(mac.protocols, [
+          { name: "T3 Code (Fork Staging)", schemes: ["t3code-fork-staging"] },
+        ]);
+      }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
   it.effect("keeps executable resource editing enabled for unsigned Windows builds", () =>
     Effect.gen(function* () {
       const config = yield* createBuildConfig(
@@ -593,6 +623,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it.effect("resolves default platform and architecture from host references", () =>
     Effect.gen(function* () {
       const resolved = yield* resolveBuildOptions({
+        profile: Option.none(),
         platform: Option.none(),
         target: Option.none(),
         arch: Option.none(),
@@ -631,6 +662,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it.effect("preserves explicit false boolean flags over true env defaults", () =>
     Effect.gen(function* () {
       const resolved = yield* resolveBuildOptions({
+        profile: Option.none(),
         platform: Option.some("mac"),
         target: Option.none(),
         arch: Option.some("arm64"),

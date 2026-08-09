@@ -1,14 +1,32 @@
+import {
+  DesktopDistributionProfileSchema,
+  type DesktopDistributionProfile,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
+const isDesktopDistributionProfile = Schema.is(DesktopDistributionProfileSchema);
+
+export function decodeEmbeddedDistributionProfile(rawManifest: string): DesktopDistributionProfile {
+  const manifest: { readonly t3codeDistributionProfile?: unknown } = JSON.parse(rawManifest);
+  const profile = manifest.t3codeDistributionProfile ?? "alpha";
+  if (!isDesktopDistributionProfile(profile)) {
+    throw new Error("Invalid embedded desktop distribution profile.");
+  }
+  return profile;
+}
+
 export interface ElectronAppMetadata {
   readonly appVersion: string;
   readonly appPath: string;
+  readonly distributionProfile: DesktopDistributionProfile;
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
   readonly runningUnderArm64Translation: boolean;
@@ -17,7 +35,7 @@ export interface ElectronAppMetadata {
 export class ElectronAppMetadataReadError extends Schema.TaggedErrorClass<ElectronAppMetadataReadError>()(
   "ElectronAppMetadataReadError",
   {
-    property: Schema.Literals(["app-version", "app-path"]),
+    property: Schema.Literals(["app-version", "app-path", "distribution-profile"]),
     cause: Schema.Defect(),
   },
 ) {
@@ -25,6 +43,8 @@ export class ElectronAppMetadataReadError extends Schema.TaggedErrorClass<Electr
     return `Failed to read Electron app metadata property "${this.property}".`;
   }
 }
+
+const isElectronAppMetadataReadError = Schema.is(ElectronAppMetadataReadError);
 
 export class ElectronAppWhenReadyError extends Schema.TaggedErrorClass<ElectronAppWhenReadyError>()(
   "ElectronAppWhenReadyError",
@@ -41,7 +61,11 @@ export class ElectronAppWhenReadyError extends Schema.TaggedErrorClass<ElectronA
 export class ElectronApp extends Context.Service<
   ElectronApp,
   {
-    readonly metadata: Effect.Effect<ElectronAppMetadata, ElectronAppMetadataReadError>;
+    readonly metadata: Effect.Effect<
+      ElectronAppMetadata,
+      ElectronAppMetadataReadError,
+      FileSystem.FileSystem | Path.Path
+    >;
     readonly name: Effect.Effect<string>;
     readonly whenReady: Effect.Effect<void, ElectronAppWhenReadyError>;
     readonly quit: Effect.Effect<void>;
@@ -106,10 +130,31 @@ export const make = ElectronApp.of({
         }),
     });
 
+    const isPackaged = Electron.app.isPackaged;
+    const distributionProfile = isPackaged
+      ? yield* Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const rawManifest = yield* fileSystem.readFileString(path.join(appPath, "package.json"));
+          return yield* Effect.try({
+            try: () => decodeEmbeddedDistributionProfile(rawManifest),
+            catch: (cause) =>
+              new ElectronAppMetadataReadError({ property: "distribution-profile", cause }),
+          });
+        }).pipe(
+          Effect.mapError((cause) =>
+            isElectronAppMetadataReadError(cause)
+              ? cause
+              : new ElectronAppMetadataReadError({ property: "distribution-profile", cause }),
+          ),
+        )
+      : "alpha";
+
     return {
       appVersion,
       appPath,
-      isPackaged: Electron.app.isPackaged,
+      distributionProfile,
+      isPackaged,
       resourcesPath: process.resourcesPath,
       runningUnderArm64Translation: Electron.app.runningUnderARM64Translation === true,
     };

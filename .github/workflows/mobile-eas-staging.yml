@@ -1,0 +1,66 @@
+name: Mobile EAS Fork Staging
+
+on:
+  push:
+    branches:
+      - fork-staging
+
+concurrency:
+  group: mobile-eas-fork-staging
+  cancel-in-progress: true
+
+jobs:
+  staging:
+    name: EAS Fork Staging
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    environment: staging
+    permissions:
+      contents: read
+    env:
+      APP_VARIANT: preview
+      NODE_OPTIONS: --max-old-space-size=8192
+      MOBILE_VERSION_POLICY: fingerprint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Expose pnpm
+        run: |
+          pnpm_version="$(node --print "require('./package.json').packageManager.split('@').pop()")"
+          vp_pnpm_bin="$HOME/.vite-plus/package_manager/pnpm/$pnpm_version/pnpm/bin"
+          echo "$vp_pnpm_bin" >> "$GITHUB_PATH"
+          "$vp_pnpm_bin/pnpm" --version
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+
+      - name: Pull staging environment variables
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas env:pull staging --non-interactive
+
+      - name: Deploy compatible staging build or update
+        uses: expo/expo-github-action/continuous-deploy-fingerprint@main
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        with:
+          profile: staging
+          branch: fork-staging
+          platform: all
+          environment: staging
+          working-directory: apps/mobile
+          github-token: ${{ secrets.GITHUB_TOKEN }}

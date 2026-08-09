@@ -1,5 +1,7 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { beforeEach, vi } from "vite-plus/test";
 
 const {
@@ -53,7 +55,7 @@ vi.mock("electron", () => ({
     getAppPath: getAppPathMock,
     getVersion: getVersionMock,
     isDefaultProtocolClient: isDefaultProtocolClientMock,
-    isPackaged: true,
+    isPackaged: false,
     name: "T3 Code",
     on: onMock,
     quit: quitMock,
@@ -74,6 +76,8 @@ vi.mock("electron", () => ({
 
 import * as ElectronApp from "./ElectronApp.ts";
 
+const electronTestLayer = Layer.mergeAll(ElectronApp.layer, NodeServices.layer);
+
 describe("ElectronApp", () => {
   beforeEach(() => {
     appendSwitchMock.mockClear();
@@ -93,12 +97,27 @@ describe("ElectronApp", () => {
       assert.deepEqual(metadata, {
         appVersion: "1.2.3",
         appPath: "/app",
-        isPackaged: true,
+        distributionProfile: "alpha",
+        isPackaged: false,
         resourcesPath: process.resourcesPath,
         runningUnderArm64Translation: false,
       });
-    }).pipe(Effect.provide(ElectronApp.layer)),
+    }).pipe(Effect.provide(electronTestLayer)),
   );
+
+  it("reads Fork Staging only from embedded manifest metadata", () => {
+    assert.equal(
+      ElectronApp.decodeEmbeddedDistributionProfile(
+        JSON.stringify({ t3codeDistributionProfile: "fork-staging" }),
+      ),
+      "fork-staging",
+    );
+    assert.equal(ElectronApp.decodeEmbeddedDistributionProfile("{}"), "alpha");
+    assert.throws(
+      () => ElectronApp.decodeEmbeddedDistributionProfile('{"t3codeDistributionProfile":"other"}'),
+      /Invalid embedded desktop distribution profile/u,
+    );
+  });
 
   it.effect("reports which app metadata property failed", () =>
     Effect.gen(function* () {
@@ -117,7 +136,7 @@ describe("ElectronApp", () => {
         error.message,
         'Failed to read Electron app metadata property "app-version".',
       );
-    }).pipe(Effect.provide(ElectronApp.layer)),
+    }).pipe(Effect.provide(electronTestLayer)),
   );
 
   it.effect("preserves Electron readiness failures", () =>
@@ -129,13 +148,13 @@ describe("ElectronApp", () => {
       const error = yield* electronApp.whenReady.pipe(Effect.flip);
 
       assert.instanceOf(error, ElectronApp.ElectronAppWhenReadyError);
-      assert.strictEqual(error.isPackaged, true);
+      assert.strictEqual(error.isPackaged, false);
       assert.strictEqual(error.cause, cause);
       assert.strictEqual(
         error.message,
-        "Failed to wait for the Electron app to become ready (packaged: true).",
+        "Failed to wait for the Electron app to become ready (packaged: false).",
       );
-    }).pipe(Effect.provide(ElectronApp.layer)),
+    }).pipe(Effect.provide(electronTestLayer)),
   );
 
   it.effect("scopes app event listeners", () =>
@@ -151,6 +170,6 @@ describe("ElectronApp", () => {
 
       assert.deepEqual(onMock.mock.calls, [["activate", listener]]);
       assert.deepEqual(removeListenerMock.mock.calls, [["activate", listener]]);
-    }).pipe(Effect.provide(ElectronApp.layer)),
+    }).pipe(Effect.provide(electronTestLayer)),
   );
 });

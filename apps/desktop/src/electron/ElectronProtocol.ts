@@ -16,12 +16,20 @@ export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
 }
 
+export function getDesktopOriginForScheme(scheme: string): string {
+  return `${scheme}://${DESKTOP_HOST}`;
+}
+
 export function getDesktopOrigin(isDevelopment: boolean): string {
-  return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}`;
+  return getDesktopOriginForScheme(getDesktopScheme(isDevelopment));
+}
+
+export function getDesktopUrlForScheme(scheme: string): string {
+  return `${getDesktopOriginForScheme(scheme)}/`;
 }
 
 export function getDesktopUrl(isDevelopment: boolean): string {
-  return `${getDesktopOrigin(isDevelopment)}/`;
+  return getDesktopUrlForScheme(getDesktopScheme(isDevelopment));
 }
 
 export class ElectronProtocolRegistrationError extends Schema.TaggedErrorClass<ElectronProtocolRegistrationError>()(

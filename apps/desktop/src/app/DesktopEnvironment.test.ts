@@ -98,6 +98,29 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("isolates Fork Staging from Alpha storage, app identity, and renderer protocol", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        {
+          distributionProfile: "fork-staging",
+          isPackaged: true,
+        },
+        { T3CODE_HOME: "/tmp/t3" },
+      );
+
+      assert.equal(environment.branding.stageLabel, "Fork Staging");
+      assert.equal(environment.displayName, "T3 Code (Fork Staging)");
+      assert.equal(environment.stateDir, "/tmp/t3/fork-staging");
+      assert.equal(environment.userDataDirName, "t3code-fork-staging");
+      assert.deepEqual(environment.legacyUserDataDirName, Option.none());
+      assert.equal(environment.appUserModelId, "com.t3tools.t3code.fork-staging");
+      assert.equal(environment.linuxDesktopEntryName, "t3code-fork-staging.desktop");
+      assert.equal(environment.linuxWmClass, "t3code-fork-staging");
+      assert.equal(environment.rendererScheme, "t3code-fork-staging");
+      assert.equal(environment.autoUpdatesEnabled, false);
+    }),
+  );
+
   it.effect("keeps implicit development state separate from production state", () =>
     Effect.gen(function* () {
       const development = yield* makeEnvironment(

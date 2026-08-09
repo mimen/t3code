@@ -1,0 +1,104 @@
+name: Mini Fork Staging Eligibility
+
+on:
+  push:
+    branches:
+      - fork-staging
+  pull_request:
+    paths:
+      - "ops/mini-fork-staging/**"
+      - ".github/workflows/mini-fork-staging-eligibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mini-fork-staging-eligibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify staging deployment inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      # This is intentionally static: no secrets, SSH, Mini hostname, or Tailnet access.
+      - name: Install Zsh for script syntax validation
+        run: sudo apt-get update && sudo apt-get install --yes zsh
+
+      - name: Verify Mini staging deployment eligibility
+        run: zsh ops/mini-fork-staging/scripts/ci-verify.zsh
+
+  publish_eligible_ref:
+    name: Publish signed staging eligibility
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fork-staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: staging
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      MINI_STAGING_ELIGIBILITY_SIGNING_KEY: ${{ secrets.MINI_STAGING_ELIGIBILITY_SIGNING_KEY }}
+    steps:
+      - name: Checkout verified staging SHA
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Sign and publish verified staging eligibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MINI_STAGING_ELIGIBILITY_SIGNING_KEY:-}" ]]; then
+            echo "::error::MINI_STAGING_ELIGIBILITY_SIGNING_KEY is required to publish signed staging eligibility." >&2
+            exit 1
+          fi
+
+          signing_key="$RUNNER_TEMP/mini-staging-eligibility-signing-key"
+          payload_path="$RUNNER_TEMP/eligibility.payload"
+          signature_path="$RUNNER_TEMP/eligibility.payload.sig"
+          publish_dir="$RUNNER_TEMP/mini-staging-eligibility-ref"
+          umask 077
+          printf '%s\n' "$MINI_STAGING_ELIGIBILITY_SIGNING_KEY" > "$signing_key"
+          trap 'rm -f "$signing_key" "$payload_path" "$signature_path"; rm -rf "$publish_dir"' EXIT
+          signer_public_key="$(ssh-keygen -y -f "$signing_key")" || {
+            echo "::error::MINI_STAGING_ELIGIBILITY_SIGNING_KEY is not an SSH private key." >&2
+            exit 1
+          }
+          [[ "$signer_public_key" == ssh-ed25519\ * ]] || {
+            echo "::error::MINI_STAGING_ELIGIBILITY_SIGNING_KEY must be an SSH Ed25519 key." >&2
+            exit 1
+          }
+
+          git fetch --no-tags origin refs/heads/fork-staging:refs/remotes/origin/fork-staging
+          current_staging_sha="$(git rev-parse refs/remotes/origin/fork-staging^{commit})"
+          if [[ "$current_staging_sha" != "$GITHUB_SHA" ]]; then
+            echo "fork-staging advanced after this eligibility run; not publishing a stale attestation."
+            exit 0
+          fi
+
+          cat > "$payload_path" <<PAYLOAD
+          schema=1
+          namespace=mini-fork-staging-eligibility
+          identity=mini-fork-staging-eligibility
+          sha=$GITHUB_SHA
+          PAYLOAD
+          ssh-keygen -Y sign -f "$signing_key" -n mini-fork-staging-eligibility "$payload_path" >/dev/null
+
+          git init -q "$publish_dir"
+          git -C "$publish_dir" checkout --orphan eligible -q
+          git -C "$publish_dir" config user.name "github-actions[bot]"
+          git -C "$publish_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp "$payload_path" "$publish_dir/eligibility.payload"
+          cp "$signature_path" "$publish_dir/eligibility.payload.sig"
+          git -C "$publish_dir" add eligibility.payload eligibility.payload.sig
+          git -C "$publish_dir" commit -qm "chore(ops): attest $GITHUB_SHA"
+          git -C "$publish_dir" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$publish_dir" push --force origin HEAD:refs/heads/mini-fork-staging/eligible
