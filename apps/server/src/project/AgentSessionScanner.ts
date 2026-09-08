@@ -13,6 +13,7 @@
  *
  * @module project/AgentSessionScanner
  */
+import * as NodeCrypto from "node:crypto";
 import * as NodeOS from "node:os";
 
 import {
@@ -22,6 +23,7 @@ import {
   type AgentSessionListResult,
   type AgentSessionPreviewResult,
   ClaudeSettings,
+  CLAUDE_SESSION_ID_PATTERN,
   CodexSettings,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -98,6 +100,9 @@ const MAX_IMPORT_HISTORY_BYTES = 32 * 1024 * 1024;
 const MAX_IMPORT_BYTES = 4 * 1024 * 1024 * 1024;
 const MAX_IMPORT_TRANSCRIPTS = 100;
 const MAX_IMPORT_RECORDS = 100_000;
+const SESSION_LIST_PAGE_SIZE = 40;
+const SESSION_LIST_TTL_MS = 5 * 60 * 1000;
+const MAX_SESSION_LIST_SNAPSHOTS = 8;
 
 const TranscriptContentBlock = Schema.Struct({
   type: Schema.optional(Schema.String),
@@ -200,7 +205,7 @@ export class AgentSessionScanner extends Context.Service<
     >;
     readonly list: (
       workspaceRoot: string,
-      cursor?: number,
+      cursor?: string,
     ) => Effect.Effect<
       AgentSessionListResult,
       AgentSessionScanError | AgentSessionUnavailableError
@@ -1607,8 +1612,6 @@ export const make = Effect.gen(function* () {
     new AgentSessionUnavailableError({
       message: "This session is unavailable or changed. Refresh the session list.",
     });
-  const sessionIdPattern =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
   const sessionLocators = new Map<
     string,
@@ -1634,7 +1637,7 @@ export const make = Effect.gen(function* () {
       for (const transcript of candidate.transcripts) {
         if (
           transcript.mtimeMs === null ||
-          !sessionIdPattern.test(path.basename(transcript.filePath, ".jsonl"))
+          !CLAUDE_SESSION_ID_PATTERN.test(path.basename(transcript.filePath, ".jsonl"))
         )
           continue;
         transcripts.push({
@@ -1783,21 +1786,107 @@ export const make = Effect.gen(function* () {
     };
   });
 
+  interface ListingSnapshot {
+    readonly rootIdentity: string;
+    readonly homes: Effect.Success<ReturnType<typeof resolveSourceHomes>>;
+    readonly expiresAt: number;
+    readonly transcripts: Effect.Success<ReturnType<typeof scopedTranscripts>>["transcripts"];
+    readonly truncated: boolean;
+    readonly pages: Map<number, AgentSessionListResult>;
+    readonly lock: Semaphore.Semaphore;
+  }
+  const listingSnapshots = new Set<ListingSnapshot>();
+  const listingCursors = new Map<string, { snapshot: ListingSnapshot; offset: number }>();
+  const discardListing = (snapshot: ListingSnapshot) => {
+    listingSnapshots.delete(snapshot);
+    for (const [cursor, page] of listingCursors) {
+      if (page.snapshot === snapshot) listingCursors.delete(cursor);
+    }
+  };
+  const listingUnavailable = () =>
+    new AgentSessionUnavailableError({
+      message: "This session listing expired or changed. Refresh the session list.",
+    });
+
   const list: AgentSessionScanner["Service"]["list"] = Effect.fn("AgentSessionScanner.list")(
-    function* (workspaceRoot, cursor = 0) {
-      const { transcripts, truncated } = yield* scopedTranscripts(workspaceRoot);
-      const sessions: AgentSessionListResult["sessions"][number][] = [];
-      let incomplete = truncated;
-      for (const transcript of transcripts.slice(cursor, cursor + 40)) {
-        const result = yield* inspect(workspaceRoot, transcript).pipe(Effect.result);
-        if (result._tag === "Success") sessions.push(result.success.summary);
-        else incomplete = true;
+    function* (workspaceRoot, cursor) {
+      const now = DateTime.toEpochMillis(yield* DateTime.now);
+      for (const snapshot of listingSnapshots) {
+        if (snapshot.expiresAt <= now) discardListing(snapshot);
       }
-      return {
-        sessions,
-        nextCursor: cursor + 40 < transcripts.length ? cursor + 40 : null,
-        truncated: incomplete,
-      };
+      const homes = yield* resolveSourceHomes("claudeAgent");
+      const rootIdentity = yield* directoryIdentity(workspaceRoot);
+      let snapshot: ListingSnapshot;
+      let offset = 0;
+      if (cursor !== undefined) {
+        const page = listingCursors.get(cursor);
+        if (
+          !page ||
+          page.snapshot.rootIdentity !== rootIdentity ||
+          page.snapshot.homes.length !== homes.length ||
+          homes.some((home, index) => {
+            const previous = page.snapshot.homes[index];
+            return (
+              !previous ||
+              home.providerInstanceId !== previous.providerInstanceId ||
+              home.homePath !== previous.homePath ||
+              home.homeKey !== previous.homeKey ||
+              home.enabled !== previous.enabled
+            );
+          })
+        )
+          return yield* listingUnavailable();
+        snapshot = page.snapshot;
+        offset = page.offset;
+      } else {
+        const discovered = yield* scopedTranscripts(workspaceRoot, homes);
+        snapshot = {
+          ...discovered,
+          rootIdentity,
+          homes,
+          expiresAt: now + SESSION_LIST_TTL_MS,
+          pages: new Map(),
+          lock: yield* Semaphore.make(1),
+        };
+        while (listingSnapshots.size >= MAX_SESSION_LIST_SNAPSHOTS) {
+          const oldest = listingSnapshots.values().next().value;
+          if (oldest) discardListing(oldest);
+        }
+        listingSnapshots.add(snapshot);
+      }
+      return yield* Effect.gen(function* () {
+        if (
+          !listingSnapshots.has(snapshot) ||
+          snapshot.expiresAt <= DateTime.toEpochMillis(yield* DateTime.now)
+        )
+          return yield* listingUnavailable();
+        const cached = snapshot.pages.get(offset);
+        if (cached) return cached;
+        const sessions: AgentSessionListResult["sessions"][number][] = [];
+        let incomplete = snapshot.truncated;
+        for (const transcript of snapshot.transcripts.slice(
+          offset,
+          offset + SESSION_LIST_PAGE_SIZE,
+        )) {
+          const result = yield* inspect(workspaceRoot, transcript).pipe(Effect.result);
+          if (result._tag === "Success") sessions.push(result.success.summary);
+          else incomplete = true;
+        }
+        if (
+          !listingSnapshots.has(snapshot) ||
+          snapshot.expiresAt <= DateTime.toEpochMillis(yield* DateTime.now)
+        ) {
+          discardListing(snapshot);
+          return yield* listingUnavailable();
+        }
+        const nextOffset = offset + SESSION_LIST_PAGE_SIZE;
+        const nextCursor =
+          nextOffset < snapshot.transcripts.length ? NodeCrypto.randomUUID() : null;
+        if (nextCursor !== null) listingCursors.set(nextCursor, { snapshot, offset: nextOffset });
+        const result = { sessions, nextCursor, truncated: incomplete };
+        snapshot.pages.set(offset, result);
+        return result;
+      }).pipe(snapshot.lock.withPermits(1));
     },
   );
 

@@ -50,6 +50,9 @@ export function AgentSessionImportDialog(props: Scope) {
   );
 }
 
+const sessionKey = (session: AgentSessionSummary) =>
+  `${session.providerInstanceId}:${session.providerSessionId}`;
+
 function SessionBrowser({ projectRef, cwd, onClose }: Scope & { onClose: () => void }) {
   const readList = useAtomQueryRunner(agentSessionList, { reportFailure: false, refresh: true });
   const [result, setResult] = useState<AgentSessionListResult>({
@@ -59,11 +62,12 @@ function SessionBrowser({ projectRef, cwd, onClose }: Scope & { onClose: () => v
   });
   const [request, setRequest] = useState<RequestState>("loading");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<AgentSessionSummary | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = result.sessions.find((session) => sessionKey(session) === selectedId) ?? null;
   const generation = useRef(0);
 
   const load = useCallback(
-    async (cursor?: number) => {
+    async (cursor?: string) => {
       const current = ++generation.current;
       const response = await readList({
         environmentId: projectRef.environmentId,
@@ -115,10 +119,10 @@ function SessionBrowser({ projectRef, cwd, onClose }: Scope & { onClose: () => v
           {sessions.map((session) => (
             <button
               type="button"
-              key={`${session.providerInstanceId}:${session.providerSessionId}`}
-              aria-pressed={selected === session}
-              className={`mb-1 w-full rounded-md p-3 text-left hover:bg-accent ${selected === session ? "bg-accent" : ""}`}
-              onClick={() => setSelected(session)}
+              key={sessionKey(session)}
+              aria-pressed={selectedId === sessionKey(session)}
+              className={`mb-1 w-full rounded-md p-3 text-left hover:bg-accent ${selectedId === sessionKey(session) ? "bg-accent" : ""}`}
+              onClick={() => setSelectedId(sessionKey(session))}
             >
               <div className="line-clamp-2 text-sm font-medium">{session.title}</div>
               <div className="mt-1 text-xs text-muted-foreground">
@@ -183,7 +187,7 @@ function SessionBrowser({ projectRef, cwd, onClose }: Scope & { onClose: () => v
       </div>
       {selected ? (
         <SessionPreview
-          key={`${selected.providerInstanceId}:${selected.providerSessionId}`}
+          key={sessionKey(selected)}
           projectRef={projectRef}
           cwd={cwd}
           session={selected}

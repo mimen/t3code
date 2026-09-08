@@ -1,5 +1,6 @@
 import {
   CommandId,
+  CLAUDE_SESSION_ID_PATTERN,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -34,9 +35,6 @@ import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEng
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderSessionDirectory from "../provider/Services/ProviderSessionDirectory.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
-
-const CLAUDE_SESSION_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class AgentSessionUnresumableSessionError extends Schema.TaggedErrorClass<AgentSessionUnresumableSessionError>()(
   "AgentSessionUnresumableSessionError",
@@ -102,6 +100,8 @@ function hasImportBlockingActivity(
   );
 }
 
+// Bulk imports and same-home aliases must exclude each other before resolving an existing thread.
+// Separate project and thread-ID locks would allow duplicate attachments through different aliases.
 const importLock = Semaphore.makeUnsafe(1);
 
 const resolveProject = Effect.fn("AgentSessionImporter.resolveProject")(function* (
@@ -129,22 +129,54 @@ const importedThreadId = (selection: AgentSessionSelection) =>
   ThreadId.make(`import:${selection.providerInstanceId}:${selection.providerSessionId}`);
 const decodeClaudeCursor = Schema.decodeUnknownOption(Schema.Struct({ resume: Schema.String }));
 const existingSessionThreads = Effect.fn("AgentSessionImporter.existingSessionThreads")(
-  function* () {
+  function* (projectId: ProjectId, selections: ReadonlyArray<AgentSessionSelection>) {
     const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
     const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
     const scanner = yield* AgentSessionScanner.AgentSessionScanner;
     const homes = yield* scanner.claudeSessionHomes;
     const key = (instanceId: AgentSessionSelection["providerInstanceId"], sessionId: string) =>
       `${homes.has(instanceId) ? `home:${homes.get(instanceId)}` : `instance:${instanceId}`}\0${sessionId}`;
-    const bindings = yield* directory.listBindings();
-    const existing = new Map<string, ThreadId>();
-    for (const binding of bindings) {
-      if (binding.provider !== "claudeAgent" || !binding.providerInstanceId) continue;
+    const requested = new Set(
+      selections.map((selection) => key(selection.providerInstanceId, selection.providerSessionId)),
+    );
+    const bindings = requested.size === 0 ? [] : yield* directory.listBindings();
+    const candidates = bindings.flatMap((binding) => {
+      if (binding.provider !== "claudeAgent" || !binding.providerInstanceId) return [];
       const cursor = decodeClaudeCursor(binding.resumeCursor);
-      if (Option.isNone(cursor)) continue;
-      const thread = yield* snapshots.getThreadShellById(binding.threadId);
-      if (Option.isSome(thread))
-        existing.set(key(binding.providerInstanceId, cursor.value.resume), binding.threadId);
+      if (Option.isNone(cursor)) return [];
+      const sessionKey = key(binding.providerInstanceId, cursor.value.resume);
+      return requested.has(sessionKey)
+        ? [
+            {
+              key: sessionKey,
+              threadId: binding.threadId,
+              providerInstanceId: binding.providerInstanceId,
+            },
+          ]
+        : [];
+    });
+    const projects = new Map(
+      (yield* snapshots.getThreadProjectIds(candidates.map((candidate) => candidate.threadId))).map(
+        (thread) => [thread.threadId, thread.projectId],
+      ),
+    );
+    const existing = new Map<
+      string,
+      {
+        threadId: ThreadId;
+        projectId: ProjectId;
+        providerInstanceId: AgentSessionSelection["providerInstanceId"];
+      }
+    >();
+    for (const candidate of candidates) {
+      const owner = projects.get(candidate.threadId);
+      if (owner !== undefined && (!existing.has(candidate.key) || owner === projectId)) {
+        existing.set(candidate.key, {
+          threadId: candidate.threadId,
+          projectId: owner,
+          providerInstanceId: candidate.providerInstanceId,
+        });
+      }
     }
     return (selection: AgentSessionSelection) =>
       existing.get(key(selection.providerInstanceId, selection.providerSessionId));
@@ -158,13 +190,16 @@ export const listAgentSessions = Effect.fn("listAgentSessions")(function* (
   const project = yield* resolveProject(input);
   const scanner = yield* AgentSessionScanner.AgentSessionScanner;
   const result = yield* scanner.list(project.workspaceRoot, input.cursor);
-  const existing = yield* existingSessionThreads();
+  const existing = yield* existingSessionThreads(input.projectId, result.sessions);
   return {
     ...result,
-    sessions: result.sessions.map((session) => ({
-      ...session,
-      existingThreadId: existing(session) ?? null,
-    })),
+    sessions: result.sessions.map((session) => {
+      const match = existing(session);
+      return {
+        ...session,
+        existingThreadId: match?.projectId === input.projectId ? match.threadId : null,
+      };
+    }),
   };
 });
 
@@ -181,34 +216,51 @@ export const attachAgentSession = Effect.fn("attachAgentSession")(function* (
 ) {
   const project = yield* resolveProject(input);
   const scanner = yield* AgentSessionScanner.AgentSessionScanner;
-  const existing = (yield* existingSessionThreads())(input);
+  const existing = (yield* existingSessionThreads(input.projectId, [input]))(input);
   if (existing) {
+    if (existing.projectId !== input.projectId) {
+      return yield* new AgentSessionUnavailableError({
+        message:
+          "This session is already attached to another project. Open it from that project instead.",
+      });
+    }
     const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-    const imported =
-      existing === importedThreadId(input)
-        ? yield* snapshots
-            .getThreadDetailById(existing)
-            .pipe(
-              Effect.mapError(
-                (cause) => new AgentSessionScanError({ operation: "read-projects", cause }),
-              ),
-            )
-        : Option.none();
-    if (
-      existing !== importedThreadId(input) ||
-      (Option.isSome(imported) && hasImportedHistory(imported.value))
-    ) {
+    const isImported =
+      existing.threadId ===
+      importedThreadId({
+        ...input,
+        providerInstanceId: existing.providerInstanceId,
+      });
+    const imported = isImported
+      ? yield* snapshots
+          .getThreadDetailById(existing.threadId)
+          .pipe(
+            Effect.mapError(
+              (cause) => new AgentSessionScanError({ operation: "read-projects", cause }),
+            ),
+          )
+      : Option.none();
+    if (!isImported || (Option.isSome(imported) && hasImportedHistory(imported.value))) {
       yield* scanner.preview(project.workspaceRoot, input);
-      return { threadId: existing };
+      return { threadId: existing.threadId };
     }
   }
-  const outcome = yield* scanner.selectedThread(project.workspaceRoot, input);
+  const selection = {
+    ...input,
+    providerInstanceId: existing?.providerInstanceId ?? input.providerInstanceId,
+  };
+  const discovered = yield* scanner.selectedThread(project.workspaceRoot, input);
+  const outcome = {
+    ...discovered,
+    thread: { ...discovered.thread, providerInstanceId: selection.providerInstanceId },
+    source: { ...discovered.source, providerInstanceId: selection.providerInstanceId },
+  };
   const result = yield* importAgentThreads(input, outcome);
   if (result.importedCount !== 1)
     return yield* new AgentSessionUnavailableError({
       message: "The session could not be attached. Refresh and try again.",
     });
-  return { threadId: importedThreadId(input) };
+  return { threadId: importedThreadId(selection) };
 }, importLock.withPermits(1));
 
 /** Import recent transcript text and persist the cursor needed to resume its provider session. */

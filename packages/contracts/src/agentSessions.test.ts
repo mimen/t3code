@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   AgentSessionAttachInput,
+  AgentSessionListInput,
+  AgentSessionListResult,
   AgentSessionPreviewInput,
   AgentSessionScanResult,
 } from "./agentSessions.ts";
@@ -31,6 +33,21 @@ it("requires project scope and a native session identity rather than a client-se
   expect(() => decodeAttachInput({ ...input, expectedWorkspaceRoot: undefined })).toThrow();
   expect(() => decodeAttachInput({ ...input, providerSessionId: "../../other.jsonl" })).toThrow();
   expect(() => decodePreviewInput({ ...input, before: -1 })).toThrow();
+});
+
+it("carries opaque session listing cursors instead of numeric offsets", () => {
+  const decodeInput = Schema.decodeUnknownSync(AgentSessionListInput);
+  const decodeResult = Schema.decodeUnknownSync(AgentSessionListResult);
+  const input = { projectId: "project", expectedWorkspaceRoot: "/project" };
+  const cursor = "server-held-page-token";
+  expect(decodeInput(input)).toEqual(input);
+  expect(decodeInput({ ...input, cursor }).cursor).toBe(cursor);
+  expect(() => decodeInput({ ...input, cursor: 40 })).toThrow();
+  expect(decodeResult({ sessions: [], nextCursor: cursor, truncated: false }).nextCursor).toBe(
+    cursor,
+  );
+  expect(decodeResult({ sessions: [], nextCursor: null, truncated: false }).nextCursor).toBeNull();
+  expect(() => decodeResult({ sessions: [], nextCursor: 40, truncated: false })).toThrow();
 });
 
 describe("AgentSessionScanResult", () => {

@@ -109,18 +109,19 @@ export const AgentSessionImportResult = Schema.Struct({
 });
 export type AgentSessionImportResult = typeof AgentSessionImportResult.Type;
 
+export const CLAUDE_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const AgentSessionSelection = Schema.Struct({
   providerInstanceId: ProviderInstanceId,
-  providerSessionId: TrimmedNonEmptyString.check(
-    Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
-  ),
+  providerSessionId: TrimmedNonEmptyString.check(Schema.isPattern(CLAUDE_SESSION_ID_PATTERN)),
 });
 export type AgentSessionSelection = typeof AgentSessionSelection.Type;
 
 export const AgentSessionListInput = Schema.Struct({
   projectId: ProjectId,
   expectedWorkspaceRoot: TrimmedNonEmptyString,
-  cursor: Schema.optional(NonNegativeInt),
+  cursor: Schema.optional(Schema.String),
 });
 export type AgentSessionListInput = typeof AgentSessionListInput.Type;
 
@@ -150,7 +151,7 @@ export type AgentSessionSummary = typeof AgentSessionSummary.Type;
 
 export const AgentSessionListResult = Schema.Struct({
   sessions: Schema.Array(AgentSessionSummary),
-  nextCursor: Schema.NullOr(NonNegativeInt),
+  nextCursor: Schema.NullOr(Schema.String),
   truncated: Schema.Boolean,
 });
 export type AgentSessionListResult = typeof AgentSessionListResult.Type;

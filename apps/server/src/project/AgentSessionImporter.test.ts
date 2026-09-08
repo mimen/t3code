@@ -600,7 +600,7 @@ const integrationLayer = Layer.mergeAll(
 
 it.layer(integrationLayer)("AgentSessionImporter integration", (it) => {
   it.effect(
-    "attaches only the selected native session, with concurrent retries and no turn execution",
+    "attaches only the selected native session across concurrent aliases without executing a turn",
     () =>
       Effect.gen(function* () {
         const engine = yield* OrchestrationEngine.OrchestrationEngineService;
@@ -627,13 +627,27 @@ it.layer(integrationLayer)("AgentSessionImporter integration", (it) => {
           providerInstanceId: source.providerInstanceId,
           providerSessionId: source.providerSessionId,
         };
-        const selected = vi.fn((root: string, selection: { providerSessionId: string }) => {
-          expect(root).toBe(workspaceRoot);
-          expect(selection.providerSessionId).toBe(CLAUDE_SESSION_ID);
-          return Effect.succeed(makeThreadOutcome(source));
-        });
+        const alias = ProviderInstanceId.make("single-claude-alias");
+        const selected = vi.fn(
+          (
+            root: string,
+            selection: { providerSessionId: string; providerInstanceId: ProviderInstanceId },
+          ) => {
+            expect(root).toBe(workspaceRoot);
+            expect(selection.providerSessionId).toBe(CLAUDE_SESSION_ID);
+            return Effect.succeed(
+              makeThreadOutcome({ ...source, providerInstanceId: selection.providerInstanceId }),
+            );
+          },
+        );
         const scanner = {
           ...integrationScanner,
+          claudeSessionHomes: Effect.succeed(
+            new Map([
+              [source.providerInstanceId, "/tmp/single-claude-home"],
+              [alias, "/tmp/single-claude-home"],
+            ]),
+          ),
           selectedThread: selected,
           preview: () =>
             Effect.succeed({
@@ -643,9 +657,12 @@ it.layer(integrationLayer)("AgentSessionImporter integration", (it) => {
             }),
           recentThreads: () => Stream.die("single attach must not scan bulk history"),
         };
-        const attached = yield* Effect.all([attachAgentSession(input), attachAgentSession(input)], {
-          concurrency: "unbounded",
-        }).pipe(Effect.provideService(AgentSessionScanner.AgentSessionScanner, scanner));
+        const attached = yield* Effect.all(
+          [attachAgentSession(input), attachAgentSession({ ...input, providerInstanceId: alias })],
+          {
+            concurrency: "unbounded",
+          },
+        ).pipe(Effect.provideService(AgentSessionScanner.AgentSessionScanner, scanner));
         expect(attached[0]).toEqual(attached[1]);
         expect(selected).toHaveBeenCalledTimes(1);
         const threadId = attached[0].threadId;
@@ -763,11 +780,33 @@ it.layer(integrationLayer)("AgentSessionImporter integration", (it) => {
             }),
           ),
         );
+        const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+        const getThreadProjectIds = vi.fn((threadIds: ReadonlyArray<ThreadId>) =>
+          snapshots.getThreadProjectIds(threadIds),
+        );
+        const unrelatedThreadId = ThreadId.make("unlisted-native-binding");
+        yield* directory.upsert({
+          threadId: unrelatedThreadId,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: instanceId,
+          resumeCursor: { resume: "123e4567-e89b-42d3-a456-426614174999" },
+          status: "stopped",
+          runtimeMode: "approval-required",
+        });
         yield* Effect.gen(function* () {
           const list = yield* listAgentSessions({
             projectId,
             expectedWorkspaceRoot: workspaceRoot,
-          });
+          }).pipe(
+            Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+              ...snapshots,
+              getThreadProjectIds,
+              getThreadShellById: () => Effect.die("must not hydrate individual thread shells"),
+            }),
+          );
+          expect(getThreadProjectIds).toHaveBeenCalledTimes(1);
+          expect(getThreadProjectIds.mock.calls[0]?.[0]).toContain(threadId);
+          expect(getThreadProjectIds.mock.calls[0]?.[0]).not.toContain(unrelatedThreadId);
           expect(list.sessions).toHaveLength(2);
           expect(
             list.sessions.find((session) => session.providerInstanceId === "claudeAgent")
@@ -792,6 +831,153 @@ it.layer(integrationLayer)("AgentSessionImporter integration", (it) => {
           );
         }).pipe(Effect.provideService(AgentSessionScanner.AgentSessionScanner, scanner));
       }),
+  );
+
+  it.effect("rejects a session attached to another project without creating a duplicate", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const ownerProjectId = ProjectId.make("cross-project-owner");
+      const requestedProjectId = ProjectId.make("cross-project-requested");
+      const threadId = ThreadId.make("cross-project-native-thread");
+      const source = makeThread("claudeAgent");
+      const workspaceRoot = "/tmp/cross-project-requested";
+      for (const projectId of [ownerProjectId, requestedProjectId]) {
+        yield* engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make(projectId),
+          projectId,
+          title: projectId,
+          workspaceRoot: `/tmp/${projectId}`,
+          defaultModelSelection: null,
+          createdAt: source.createdAt,
+        });
+      }
+      yield* engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(threadId),
+        threadId,
+        projectId: ownerProjectId,
+        title: source.title,
+        modelSelection: { instanceId: source.providerInstanceId, model: "default" },
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt: source.createdAt,
+      });
+      yield* directory.upsert({
+        threadId,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: source.providerInstanceId,
+        resumeCursor: { threadId, resume: source.providerSessionId },
+        status: "stopped",
+        runtimeMode: "approval-required",
+      });
+      const sequence = yield* engine.latestSequence;
+      const result = yield* attachAgentSession({
+        projectId: requestedProjectId,
+        expectedWorkspaceRoot: workspaceRoot,
+        providerInstanceId: source.providerInstanceId,
+        providerSessionId: source.providerSessionId,
+      }).pipe(
+        Effect.provideService(AgentSessionScanner.AgentSessionScanner, {
+          ...integrationScanner,
+          preview: () => Effect.succeed({ messages: [], nextBefore: null, truncated: false }),
+          selectedThread: () => Effect.succeed(makeThreadOutcome(source)),
+        }),
+        Effect.result,
+      );
+      expect(result._tag).toBe("Failure");
+      expect(yield* engine.latestSequence).toBe(sequence);
+      expect(
+        (yield* directory.listBindings()).filter((binding) => binding.threadId === threadId),
+      ).toHaveLength(1);
+    }),
+  );
+
+  it.effect("repairs an interrupted attachment through a different same-home alias", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+      const projectId = ProjectId.make("partial-alias-project");
+      const workspaceRoot = "/tmp/partial-alias-project";
+      const source = {
+        ...makeThread("claudeAgent"),
+        providerInstanceId: ProviderInstanceId.make("original-claude"),
+      };
+      const alias = ProviderInstanceId.make("selected-claude");
+      const threadId = ThreadId.make(
+        `import:${source.providerInstanceId}:${source.providerSessionId}`,
+      );
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make(projectId),
+        projectId,
+        title: "Partial alias",
+        workspaceRoot,
+        defaultModelSelection: null,
+        createdAt: source.createdAt,
+      });
+      yield* directory.upsert({
+        threadId,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: source.providerInstanceId,
+        resumeCursor: { threadId, resume: source.providerSessionId },
+        runtimePayload: { cwd: workspaceRoot },
+        status: "stopped",
+        runtimeMode: "approval-required",
+      });
+      yield* engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(threadId),
+        threadId,
+        projectId,
+        title: source.title,
+        modelSelection: { instanceId: source.providerInstanceId, model: "default" },
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt: source.createdAt,
+        historyImport: true,
+      });
+      const scanner = {
+        ...integrationScanner,
+        claudeSessionHomes: Effect.succeed(
+          new Map([
+            [source.providerInstanceId, "/tmp/shared-claude-home"],
+            [alias, "/tmp/shared-claude-home"],
+          ]),
+        ),
+        preview: () => Effect.succeed({ messages: [], nextBefore: null, truncated: false }),
+        selectedThread: () =>
+          Effect.succeed(makeThreadOutcome({ ...source, providerInstanceId: alias })),
+      };
+      const attach = attachAgentSession({
+        projectId,
+        expectedWorkspaceRoot: workspaceRoot,
+        providerInstanceId: alias,
+        providerSessionId: source.providerSessionId,
+      }).pipe(Effect.provideService(AgentSessionScanner.AgentSessionScanner, scanner));
+      expect(yield* attach).toEqual({ threadId });
+      expect(
+        Option.getOrThrow(yield* snapshots.getThreadDetailById(threadId)).messages,
+      ).toHaveLength(2);
+      expect(yield* attach).toEqual({ threadId });
+      expect(
+        Option.getOrThrow(yield* snapshots.getThreadDetailById(threadId)).messages,
+      ).toHaveLength(2);
+      expect(Option.getOrThrow(yield* directory.getBinding(threadId)).providerInstanceId).toBe(
+        source.providerInstanceId,
+      );
+      expect(
+        yield* snapshots.getThreadDetailById(
+          ThreadId.make(`import:${alias}:${source.providerSessionId}`),
+        ),
+      ).toEqual(Option.none());
+    }),
   );
 
   it.effect("repairs an attach interrupted after thread creation without duplicating history", () =>
