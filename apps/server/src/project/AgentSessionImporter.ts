@@ -7,6 +7,11 @@ import {
   AgentSessionImportProjectChangedError,
   AgentSessionImportProjectNotFoundError,
   AgentSessionSource,
+  AgentSessionUnavailableError,
+  type AgentSessionAttachInput,
+  type AgentSessionListInput,
+  type AgentSessionPreviewInput,
+  type AgentSessionSelection,
   AgentSessionScanError,
   isImportedAgentSessionMessageId,
   MessageId,
@@ -23,6 +28,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as Semaphore from "effect/Semaphore";
 
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -96,42 +102,145 @@ function hasImportBlockingActivity(
   );
 }
 
+const importLock = Semaphore.makeUnsafe(1);
+
+const resolveProject = Effect.fn("AgentSessionImporter.resolveProject")(function* (
+  input: AgentSessionImportInput,
+) {
+  const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const project = yield* snapshots
+    .getProjectShellById(input.projectId)
+    .pipe(
+      Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
+    );
+  if (Option.isNone(project))
+    return yield* new AgentSessionImportProjectNotFoundError({ projectId: input.projectId });
+  if (
+    input.expectedWorkspaceRoot !== undefined &&
+    normalizeProjectPathForComparison(project.value.workspaceRoot) !==
+      normalizeProjectPathForComparison(input.expectedWorkspaceRoot)
+  ) {
+    return yield* new AgentSessionImportProjectChangedError({ projectId: input.projectId });
+  }
+  return project.value;
+});
+
+const importedThreadId = (selection: AgentSessionSelection) =>
+  ThreadId.make(`import:${selection.providerInstanceId}:${selection.providerSessionId}`);
+const decodeClaudeCursor = Schema.decodeUnknownOption(Schema.Struct({ resume: Schema.String }));
+const existingSessionThreads = Effect.fn("AgentSessionImporter.existingSessionThreads")(
+  function* () {
+    const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+    const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+    const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+    const homes = yield* scanner.claudeSessionHomes;
+    const key = (instanceId: AgentSessionSelection["providerInstanceId"], sessionId: string) =>
+      `${homes.has(instanceId) ? `home:${homes.get(instanceId)}` : `instance:${instanceId}`}\0${sessionId}`;
+    const bindings = yield* directory.listBindings();
+    const existing = new Map<string, ThreadId>();
+    for (const binding of bindings) {
+      if (binding.provider !== "claudeAgent" || !binding.providerInstanceId) continue;
+      const cursor = decodeClaudeCursor(binding.resumeCursor);
+      if (Option.isNone(cursor)) continue;
+      const thread = yield* snapshots.getThreadShellById(binding.threadId);
+      if (Option.isSome(thread))
+        existing.set(key(binding.providerInstanceId, cursor.value.resume), binding.threadId);
+    }
+    return (selection: AgentSessionSelection) =>
+      existing.get(key(selection.providerInstanceId, selection.providerSessionId));
+  },
+  Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
+);
+
+export const listAgentSessions = Effect.fn("listAgentSessions")(function* (
+  input: AgentSessionListInput,
+) {
+  const project = yield* resolveProject(input);
+  const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+  const result = yield* scanner.list(project.workspaceRoot, input.cursor);
+  const existing = yield* existingSessionThreads();
+  return {
+    ...result,
+    sessions: result.sessions.map((session) => ({
+      ...session,
+      existingThreadId: existing(session) ?? null,
+    })),
+  };
+});
+
+export const previewAgentSession = Effect.fn("previewAgentSession")(function* (
+  input: AgentSessionPreviewInput,
+) {
+  const project = yield* resolveProject(input);
+  const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+  return yield* scanner.preview(project.workspaceRoot, input, input.before);
+});
+
+export const attachAgentSession = Effect.fn("attachAgentSession")(function* (
+  input: AgentSessionAttachInput,
+) {
+  const project = yield* resolveProject(input);
+  const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+  const existing = (yield* existingSessionThreads())(input);
+  if (existing) {
+    const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+    const imported =
+      existing === importedThreadId(input)
+        ? yield* snapshots
+            .getThreadDetailById(existing)
+            .pipe(
+              Effect.mapError(
+                (cause) => new AgentSessionScanError({ operation: "read-projects", cause }),
+              ),
+            )
+        : Option.none();
+    if (
+      existing !== importedThreadId(input) ||
+      (Option.isSome(imported) && hasImportedHistory(imported.value))
+    ) {
+      yield* scanner.preview(project.workspaceRoot, input);
+      return { threadId: existing };
+    }
+  }
+  const outcome = yield* scanner.selectedThread(project.workspaceRoot, input);
+  const result = yield* importAgentThreads(input, outcome);
+  if (result.importedCount !== 1)
+    return yield* new AgentSessionUnavailableError({
+      message: "The session could not be attached. Refresh and try again.",
+    });
+  return { threadId: importedThreadId(input) };
+}, importLock.withPermits(1));
+
 /** Import recent transcript text and persist the cursor needed to resume its provider session. */
 export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(function* (
   input: AgentSessionImportInput,
+) {
+  return yield* importAgentThreads(input);
+}, importLock.withPermits(1));
+
+const importAgentThreads = Effect.fn("AgentSessionImporter.importAgentThreads")(function* (
+  input: AgentSessionImportInput,
+  selected?: Extract<AgentSessionScanner.AgentSessionRecentThread, { _tag: "Importable" }>,
 ) {
   const scanner = yield* AgentSessionScanner.AgentSessionScanner;
   const engine = yield* OrchestrationEngine.OrchestrationEngineService;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
   const crypto = yield* Crypto.Crypto;
-  const project = yield* snapshots.getProjectShellById(input.projectId).pipe(
-    Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
-    Effect.flatMap(
-      Option.match({
-        onNone: () =>
-          Effect.fail(new AgentSessionImportProjectNotFoundError({ projectId: input.projectId })),
-        onSome: Effect.succeed,
-      }),
-    ),
-  );
+  const project = yield* resolveProject(input);
   const workspaceRoot = project.workspaceRoot;
-  if (
-    input.expectedWorkspaceRoot !== undefined &&
-    normalizeProjectPathForComparison(workspaceRoot) !==
-      normalizeProjectPathForComparison(input.expectedWorkspaceRoot)
-  ) {
-    return yield* new AgentSessionImportProjectChangedError({ projectId: input.projectId });
-  }
+  const runtimeMode = selected ? "approval-required" : DEFAULT_RUNTIME_MODE;
   const completedSources = yield* snapshots
     .getImportedAgentSessionSources(input.projectId)
     .pipe(
       Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-projects", cause })),
     );
-  const threads = scanner.recentThreads(
-    workspaceRoot,
-    completedSources.map((entry) => entry.source),
-  );
+  const threads = selected
+    ? Stream.succeed(selected)
+    : scanner.recentThreads(
+        workspaceRoot,
+        completedSources.map((entry) => entry.source),
+      );
   const importedThreadIds = new Set<ThreadId>();
   let importedCount = 0;
   let skippedCount = 0;
@@ -229,7 +338,7 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
               provider,
               providerInstanceId: thread.providerInstanceId,
               status: "stopped",
-              runtimeMode: DEFAULT_RUNTIME_MODE,
+              runtimeMode,
               resumeCursor:
                 thread.source === "codex"
                   ? { threadId: thread.providerSessionId }
@@ -248,7 +357,7 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
             projectId: input.projectId,
             title: thread.title,
             modelSelection: { instanceId: thread.providerInstanceId, model },
-            runtimeMode: DEFAULT_RUNTIME_MODE,
+            runtimeMode,
             interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
             branch: null,
             worktreePath: null,

@@ -1,9 +1,15 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { AgentSessionScanResult } from "./agentSessions.ts";
+import {
+  AgentSessionAttachInput,
+  AgentSessionPreviewInput,
+  AgentSessionScanResult,
+} from "./agentSessions.ts";
 
 const decodeScanResult = Schema.decodeUnknownSync(AgentSessionScanResult);
+const decodeAttachInput = Schema.decodeUnknownSync(AgentSessionAttachInput);
+const decodePreviewInput = Schema.decodeUnknownSync(AgentSessionPreviewInput);
 
 const candidate = {
   path: "/projects/repo",
@@ -13,6 +19,19 @@ const candidate = {
   lastActiveAt: "2026-08-20T12:00:00.000Z",
   alreadyImported: false,
 } as const;
+
+it("requires project scope and a native session identity rather than a client-selected path", () => {
+  const input = {
+    projectId: "project",
+    expectedWorkspaceRoot: "/project",
+    providerInstanceId: "claudeAgent",
+    providerSessionId: "123e4567-e89b-42d3-a456-426614174000",
+  };
+  expect(decodeAttachInput(input)).toEqual(input);
+  expect(() => decodeAttachInput({ ...input, expectedWorkspaceRoot: undefined })).toThrow();
+  expect(() => decodeAttachInput({ ...input, providerSessionId: "../../other.jsonl" })).toThrow();
+  expect(() => decodePreviewInput({ ...input, before: -1 })).toThrow();
+});
 
 describe("AgentSessionScanResult", () => {
   it("decodes candidates from servers that predate the git scan", () => {
