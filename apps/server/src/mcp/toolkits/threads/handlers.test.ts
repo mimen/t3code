@@ -96,6 +96,7 @@ interface HarnessOptions {
   readonly project?: OrchestrationProjectShell | null;
   readonly existing?: ReadonlyMap<string, OrchestrationThreadShell>;
   readonly failDispatch?: boolean;
+  readonly appearsAfterFailedDispatch?: OrchestrationThreadShell;
 }
 
 const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
@@ -104,7 +105,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
   const commands = yield* Ref.make<ReadonlyArray<TurnStart>>([]);
   const thread = options.thread === undefined ? makeThread() : options.thread;
   const project = options.project === undefined ? makeProject() : options.project;
-  const existing = options.existing ?? new Map();
+  const existing = new Map(options.existing ?? []);
   const dependencies = Layer.mergeAll(
     Layer.mock(ProjectionSnapshotQuery)({
       getThreadShellById: (threadId) =>
@@ -116,12 +117,20 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
       getProjectShellById: () => Effect.succeed(Option.fromNullishOr(project)),
     }),
     Layer.mock(ThreadBootstrap)({
-      dispatchTurnStart: (command) =>
-        options.failDispatch
+      dispatchTurnStart: (command) => {
+        const raced = options.appearsAfterFailedDispatch;
+        if (raced) {
+          existing.set(raced.id, raced);
+          return Effect.fail(
+            new OrchestrationDispatchCommandError({ message: "Thread already exists." }),
+          );
+        }
+        return options.failDispatch
           ? Effect.fail(new OrchestrationDispatchCommandError({ message: "worktree exists" }))
           : Ref.update(commands, (recorded) => [...recorded, command]).pipe(
               Effect.as({ sequence: 1 }),
-            ),
+            );
+      },
     }),
     Layer.succeed(Crypto.Crypto, testCrypto),
   );
@@ -313,6 +322,23 @@ describe("threads toolkit handlers", () => {
         alreadyStarted: true,
       });
       expect(yield* harness.dispatched).toEqual([]);
+    }),
+  );
+
+  it.effect("returns the thread a concurrent call created under the same clientRequestId", () =>
+    Effect.gen(function* () {
+      const probe = yield* makeHarness();
+      const created = yield* probe.call({ prompt: PROMPT, clientRequestId: "req-1" });
+      const raced = makeThread({ id: ThreadId.make(created.threadId), title: "Raced" });
+      const harness = yield* makeHarness({ appearsAfterFailedDispatch: raced });
+      const result = yield* harness.call({ prompt: PROMPT, clientRequestId: "req-1" });
+      expect(result.threadId).toBe(created.threadId);
+      expect(result.title).toBe("Raced");
+      expect(result.alreadyStarted).toBe(true);
+
+      const noKey = yield* makeHarness({ appearsAfterFailedDispatch: raced });
+      const error = yield* noKey.call({ prompt: PROMPT }).pipe(Effect.flip);
+      expect(error._tag).toBe("ThreadStartFailedError");
     }),
   );
 

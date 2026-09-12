@@ -167,7 +167,7 @@ const make = Effect.gen(function* () {
       createdAt,
     };
 
-    yield* bootstrap
+    const alreadyStarted = yield* bootstrap
       .dispatchTurnStart({
         type: "thread.turn.start",
         commandId,
@@ -194,11 +194,21 @@ const make = Effect.gen(function* () {
             ? Effect.failCause(cause as Cause.Cause<never>)
             : Effect.fail(new ThreadStartFailedError({ cause })),
         ),
+        Effect.as(false),
+        requestKey === undefined
+          ? (effect) => effect
+          : Effect.catchTag("ThreadStartFailedError", (error) =>
+              readThread(threadId).pipe(
+                Effect.flatMap((thread) =>
+                  Option.isSome(thread) ? Effect.succeed(true) : Effect.fail(error),
+                ),
+              ),
+            ),
       );
 
     const started = yield* readThread(threadId);
     return Option.isSome(started)
-      ? resultOf(started.value, false)
+      ? resultOf(started.value, alreadyStarted)
       : resultOf({ id: threadId, ...createThread }, false);
   });
 
