@@ -2,8 +2,7 @@
  * ThreadBootstrap - Create-and-start sequence for a thread's first turn.
  *
  * Runs the `thread.turn.start` bootstrap: create the thread, prepare a
- * worktree, run the setup script, then dispatch the turn. Shared by the
- * WebSocket transport and the MCP server.
+ * worktree, run the setup script, then dispatch the turn.
  *
  * @module ThreadBootstrap
  */
