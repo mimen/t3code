@@ -20,15 +20,15 @@ group. The prior inventory counted five, most likely the five directories under 
 That misses `infra/relay`, which has its own deploy workflow and its own database, and
 `ops/mini-fork-alpha`, which is local to this fork and has no upstream counterpart.
 
-| Component | Path | What it is |
-|---|---|---|
-| `apps/server` (`t3`) | `apps/server/` | Node WebSocket and HTTP server and CLI. Wraps the provider CLIs, serves the built web app, owns the event-sourced engine and its SQLite store. Published to npm as `t3`. |
-| `apps/web` (`@t3tools/web`) | `apps/web/` | React and Vite browser client. Served by the local server, and deployed standalone to Vercel as the hosted app. |
-| `apps/desktop` (`@t3tools/desktop`) | `apps/desktop/` | Electron shell that spawns a desktop-scoped server. Distributed as macOS DMG, Linux AppImage, and Windows NSIS with electron-updater. |
-| `apps/mobile` (`@t3tools/mobile`) | `apps/mobile/` | Expo React Native app for iOS and Android. Not yet distributed. Ships via EAS preview and production. |
-| `apps/marketing` (`@t3tools/marketing`) | `apps/marketing/` | Astro static product site. No in-repo deploy target found. |
-| `infra/relay` (`t3code-relay`) | `infra/relay/` | The T3 Connect control plane. Cloudflare Worker deployed by Alchemy, backed by PlanetScale Postgres, links environments and registers mobile devices. |
-| `ops/mini-fork-alpha` | `ops/mini-fork-alpha/` | Local only. Versioned deployment contract that runs the fork's own server build on the Mac Mini and keeps it healthy. |
+| Component | Path | What it is | Surfaces |
+|---|---|---|---|
+| `apps/server` (`t3`) | `apps/server/` | Node WebSocket and HTTP server and CLI. Wraps the provider CLIs, serves the built web app, owns the event-sourced engine and its SQLite store. Published to npm as `t3`. | api, cli-tui, backend-data |
+| `apps/web` (`@t3tools/web`) | `apps/web/` | React and Vite browser client. Served by the local server, and deployed standalone to Vercel as the hosted app. | web |
+| `apps/desktop` (`@t3tools/desktop`) | `apps/desktop/` | Electron shell that spawns a desktop-scoped server. Distributed as macOS DMG, Linux AppImage, and Windows NSIS with electron-updater. | desktop |
+| `apps/mobile` (`@t3tools/mobile`) | `apps/mobile/` | Expo React Native app for iOS and Android. Not yet distributed. Ships via EAS preview and production. | mobile |
+| `apps/marketing` (`@t3tools/marketing`) | `apps/marketing/` | Astro static product site. No in-repo deploy target found. | web |
+| `infra/relay` (`t3code-relay`) | `infra/relay/` | The T3 Connect control plane. Cloudflare Worker deployed by Alchemy, backed by PlanetScale Postgres, links environments and registers mobile devices. | api, backend-data |
+| `ops/mini-fork-alpha` | `ops/mini-fork-alpha/` | Local only. Versioned deployment contract that runs the fork's own server build on the Mac Mini and keeps it healthy. | cli-tui, resident, configuration |
 
 `packages/*`, `oxlint-plugin-t3code`, and `scripts` are the shared-library and tooling
 group, consumed by the seven above and not operated on their own. `docs/`, `.plans/`, and
