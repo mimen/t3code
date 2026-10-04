@@ -3,7 +3,14 @@ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { expect, it } from "@effect/vitest";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId, PreviewTabId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  EnvironmentId,
+  PreviewTabId,
+  ProviderInstanceId,
+  ServerSettingsError,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -869,4 +876,32 @@ it.effect("registers annotated tools and preserves authenticated request context
       }
     }),
   ).pipe(Effect.provide(TestLayer)),
+);
+
+it.effect("adds the cross-project capability only for threads the user granted", () =>
+  Effect.gen(function* () {
+    const settingsWith = (threadIds: ReadonlyArray<ThreadId>) => ({
+      getSettings: Effect.succeed({
+        ...DEFAULT_SERVER_SETTINGS,
+        crossProjectOrchestratorThreadIds: threadIds,
+      }),
+    });
+    const scope = { ...invocation, capabilities: new Set(["orchestration"] as const) };
+
+    const granted = yield* McpHttpServer.withCrossProjectGrant(scope, settingsWith([threadId]));
+    expect([...granted.capabilities].toSorted()).toEqual(["cross-project", "orchestration"]);
+
+    const other = yield* McpHttpServer.withCrossProjectGrant(
+      scope,
+      settingsWith([ThreadId.make("thread-other")]),
+    );
+    expect(other.capabilities.has("cross-project")).toBe(false);
+
+    const unreadable = yield* McpHttpServer.withCrossProjectGrant(scope, {
+      getSettings: Effect.fail(
+        new ServerSettingsError({ settingsPath: "settings.json", operation: "read-file" }),
+      ),
+    });
+    expect(unreadable.capabilities.has("cross-project")).toBe(false);
+  }),
 );

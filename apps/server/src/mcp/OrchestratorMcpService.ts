@@ -62,6 +62,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import type * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import {
   subagentResultForRun,
@@ -70,7 +71,7 @@ import {
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
-import type { McpInvocationScope } from "./McpInvocationContext.ts";
+import { lookupProjectId, type McpInvocationScope } from "./McpInvocationContext.ts";
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
@@ -572,6 +573,7 @@ function threadSettlement(
 function listItemFromShell(shell: OrchestrationV2ThreadShell): OrchestratorMcpThreadListItem {
   return {
     threadId: shell.id,
+    projectId: shell.projectId,
     title: shell.title,
     createdBy: shell.createdBy,
     creationSource: shell.creationSource,
@@ -817,6 +819,25 @@ const make = Effect.gen(function* () {
       )
       .pipe(Effect.mapError(threadManagementFailure));
 
+  const targetProjectId = (
+    scope: McpInvocationScope,
+    parent: Pick<OrchestrationV2ThreadProjection, "thread">,
+    threadId: ThreadId,
+  ) =>
+    lookupProjectId({
+      scope,
+      callerProjectId: parent.thread.projectId,
+      threadId,
+      getThreadShell: threadManagement.getThreadShell,
+    }).pipe(
+      Effect.mapError((error) =>
+        failure(
+          "orchestration_error",
+          `Unable to locate thread ${threadId}: ${errorMessage(error)}`,
+        ),
+      ),
+    );
+
   const loadScopedThread = (scope: McpInvocationScope, threadId: ThreadId) =>
     Effect.gen(function* () {
       yield* requireCapability(scope);
@@ -824,7 +845,7 @@ const make = Effect.gen(function* () {
       const target =
         threadId === scope.threadId
           ? parent
-          : yield* loadProjectThread(parent.thread.projectId, threadId);
+          : yield* loadProjectThread(yield* targetProjectId(scope, parent, threadId), threadId);
       return { parent, target } as const;
     });
 
@@ -855,8 +876,9 @@ const make = Effect.gen(function* () {
           .getThreadRecords(threadId, ["runs", "runtimeRequests", "contextTransfers"])
           .pipe(Effect.mapError(threadManagementFailure));
       if (threadId === scope.threadId) return { parent, target: yield* loadTarget() } as const;
+      const projectId = yield* targetProjectId(scope, parent, threadId);
       const target = yield* threadManagement
-        .getProjectThreadRecords({ projectId: parent.thread.projectId, threadId }, [
+        .getProjectThreadRecords({ projectId, threadId }, [
           "runs",
           "runtimeRequests",
           "contextTransfers",
@@ -1724,16 +1746,21 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         yield* requireCapability(scope);
         const parent = yield* loadProjection(scope.threadId);
-        const projectThreads = yield* threadManagement
-          .listProjectThreads({
-            projectId: parent.thread.projectId,
-            includeSubagents: input.includeSubagents !== false,
-          })
-          .pipe(
-            Effect.mapError((error) =>
-              failure("orchestration_error", `Unable to list threads: ${errorMessage(error)}`),
-            ),
-          );
+        const includeSubagents = input.includeSubagents !== false;
+        const listed: Effect.Effect<
+          ReadonlyArray<OrchestrationV2ThreadShell>,
+          ThreadManagementService.ThreadManagementError | Orchestrator.OrchestratorV2Error
+        > = scope.capabilities.has("cross-project")
+          ? threadManagement.listThreads({ includeSubagents })
+          : threadManagement.listProjectThreads({
+              projectId: parent.thread.projectId,
+              includeSubagents,
+            });
+        const projectThreads = yield* listed.pipe(
+          Effect.mapError((error) =>
+            failure("orchestration_error", `Unable to list threads: ${errorMessage(error)}`),
+          ),
+        );
         const statuses = input.statuses === undefined ? null : new Set(input.statuses);
         const titleContains = input.titleContains?.toLocaleLowerCase();
         const filtered = projectThreads
@@ -1858,7 +1885,7 @@ const make = Effect.gen(function* () {
         });
         const result = yield* threadManagement
           .sendToThread({
-            projectId: parent.thread.projectId,
+            projectId: target.thread.projectId,
             commandId: stableCommandId({
               scope,
               requestKey: key,
@@ -1893,10 +1920,10 @@ const make = Effect.gen(function* () {
       }),
     waitForThread: (scope, input) =>
       Effect.gen(function* () {
-        const { parent } = yield* loadScopedThread(scope, input.threadId);
+        const { target } = yield* loadScopedThread(scope, input.threadId);
         const result = yield* threadManagement
           .waitForThread({
-            projectId: parent.thread.projectId,
+            projectId: target.thread.projectId,
             threadId: input.threadId,
             ...(input.runId === undefined ? {} : { runId: input.runId }),
             timeoutMs: Math.min(
@@ -1914,11 +1941,11 @@ const make = Effect.gen(function* () {
       }),
     interruptThread: (scope, input) =>
       Effect.gen(function* () {
-        const { parent } = yield* loadScopedThread(scope, input.threadId);
+        const { target } = yield* loadScopedThread(scope, input.threadId);
         const key = yield* requestKey(input.clientRequestId);
         const result = yield* threadManagement
           .interruptThread({
-            projectId: parent.thread.projectId,
+            projectId: target.thread.projectId,
             commandId: stableCommandId({
               scope,
               requestKey: key,

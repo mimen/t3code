@@ -29,7 +29,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, archive, or mark a thread unread in the calling project. Omit threadId for this thread. snooze requires snoozedUntil. Existing thread lifecycle rules apply; this does not schedule a future action.",
+    "Pin, snooze, settle, archive, or mark a thread unread in the calling project. Omit threadId for this thread. snooze requires snoozedUntil. Existing thread lifecycle rules apply. Settling this thread while its turn runs takes effect when the turn ends (settlesWhenRunEnds=true).",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     action: Schema.Literals([
@@ -45,7 +45,10 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
     ]),
     snoozedUntil: Schema.optional(IsoDateTime),
   }),
-  success: OrchestrationV2DispatchCommandResult,
+  success: Schema.Struct({
+    ...OrchestrationV2DispatchCommandResult.fields,
+    settlesWhenRunEnds: Schema.optional(Schema.Boolean),
+  }),
   failure: OrchestratorMcpFailure,
   failureMode: "return" as const,
   dependencies: [
@@ -233,7 +236,7 @@ const ThreadTransfersTool = Tool.make("t3_thread_transfers", {
 const ThreadSearchTool = Tool.make("t3_thread_search", {
   ...commandTool,
   description:
-    "Search active thread titles and content with the app's existing bounded search. Returns matches in the calling project from the global top matches; other-project matches are omitted, so this may return fewer than limit. No pagination or exhaustive-result guarantee.",
+    "Search active thread titles and content with the app's existing bounded search. Returns matches in the calling project (every project when the user granted this thread cross-project orchestration) from the global top matches; other-project matches are omitted, so this may return fewer than limit. No pagination or exhaustive-result guarantee.",
   parameters: OrchestrationSearchThreadsInput,
   success: OrchestrationSearchThreadsResult,
   dependencies: [...commandTool.dependencies, ThreadSearch.ThreadSearch],

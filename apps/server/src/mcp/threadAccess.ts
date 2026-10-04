@@ -66,18 +66,25 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
   K extends ProjectionRecordField = never,
 >(threadId?: ThreadId, fields: ReadonlyArray<K> = []) {
   const { scope, threads, caller } = yield* readCaller();
+  const targetId = threadId ?? caller.id;
+  const projectId = yield* McpInvocationContext.lookupProjectId({
+    scope,
+    callerProjectId: caller.projectId,
+    threadId: targetId,
+    getThreadShell: threads.getThreadShell,
+  }).pipe(Effect.mapError(unavailable));
   const projection = yield* threads
-    .getProjectThreadRecords(
-      { projectId: caller.projectId, threadId: threadId ?? caller.id },
-      fields,
-      { turnItemTypes: ["user_input_request"] },
-    )
+    .getProjectThreadRecords({ projectId, threadId: targetId }, fields, {
+      turnItemTypes: ["user_input_request"],
+    })
     .pipe(
       Effect.mapError((error) =>
         error._tag === "ThreadManagementThreadNotFoundError"
           ? new OrchestratorMcpFailure({
               code: "thread_not_found",
-              message: "The thread was not found in the calling project.",
+              message: scope.capabilities.has("cross-project")
+                ? "The thread was not found."
+                : "The thread was not found in the calling project.",
             })
           : unavailable(),
       ),

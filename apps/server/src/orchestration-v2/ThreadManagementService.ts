@@ -314,6 +314,10 @@ export interface ThreadManagementServiceShape {
     readonly projectId: ProjectId;
     readonly includeSubagents: boolean;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, ThreadManagementError>;
+  /** Every project's threads, for a caller the user granted cross-project orchestration. */
+  readonly listThreads: (input: {
+    readonly includeSubagents: boolean;
+  }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, Orchestrator.OrchestratorV2Error>;
   readonly sendToThread: (
     input: ThreadManagementSendInput,
   ) => Effect.Effect<ThreadManagementSendResult, ThreadManagementFailure>;
@@ -508,8 +512,26 @@ const make = Effect.gen(function* () {
         ),
       );
 
+  const listThreads: ThreadManagementServiceShape["listThreads"] = (input) =>
+    orchestrator
+      .getShellSnapshot()
+      .pipe(
+        Effect.map((snapshot) =>
+          snapshot.threads
+            .filter(
+              (thread) =>
+                input.includeSubagents || thread.lineage.relationshipToParent !== "subagent",
+            )
+            .toSorted(
+              (left, right) =>
+                DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
+                right.id.localeCompare(left.id),
+            ),
+        ),
+      );
+
   const listProjectThreads: ThreadManagementServiceShape["listProjectThreads"] = (input) =>
-    orchestrator.getShellSnapshot().pipe(
+    listThreads(input).pipe(
       Effect.mapError(
         (cause) =>
           new ThreadManagementProjectThreadsListError({
@@ -517,19 +539,7 @@ const make = Effect.gen(function* () {
             cause,
           }),
       ),
-      Effect.map((snapshot) =>
-        snapshot.threads
-          .filter((thread) => thread.projectId === input.projectId)
-          .filter(
-            (thread) =>
-              input.includeSubagents || thread.lineage.relationshipToParent !== "subagent",
-          )
-          .toSorted(
-            (left, right) =>
-              DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
-              right.id.localeCompare(left.id),
-          ),
-      ),
+      Effect.map((threads) => threads.filter((thread) => thread.projectId === input.projectId)),
     );
 
   const sendToThread: ThreadManagementServiceShape["sendToThread"] = (input) =>
@@ -750,6 +760,7 @@ const make = Effect.gen(function* () {
     getShellSnapshot: orchestrator.getShellSnapshot,
     getThreadShell: orchestrator.getThreadShell,
     listProjectThreads,
+    listThreads,
     sendToThread,
     waitForThread,
     interruptThread,

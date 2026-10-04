@@ -17,6 +17,7 @@ import { PreviewAutomationError } from "@t3tools/contracts";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as DeviceService from "../device/DeviceService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
@@ -99,8 +100,33 @@ export const normalizeMcpHttpResponse = (
     : response;
 };
 
-const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
-  Effect.map((registry): McpAuthMiddleware =>
+/**
+ * The user grants cross-project orchestration in settings, not through the
+ * credential, so a grant or revoke applies to the thread's next call without
+ * rotating the provider's token.
+ */
+export const withCrossProjectGrant = (
+  invocation: McpInvocationContext.McpInvocationScope,
+  settings: Pick<ServerSettings.ServerSettingsService["Service"], "getSettings">,
+) =>
+  settings.getSettings.pipe(
+    Effect.map(({ crossProjectOrchestratorThreadIds }) =>
+      crossProjectOrchestratorThreadIds.includes(invocation.threadId)
+        ? {
+            ...invocation,
+            capabilities: new Set([...invocation.capabilities, "cross-project" as const]),
+          }
+        : invocation,
+    ),
+    // An unreadable settings file must not widen access or break every tool.
+    Effect.orElseSucceed(() => invocation),
+  );
+
+const makeMcpAuthMiddleware = Effect.all([
+  McpSessionRegistry.McpSessionRegistry,
+  ServerSettings.ServerSettingsService,
+]).pipe(
+  Effect.map(([registry, settings]): McpAuthMiddleware =>
     Effect.fn("McpHttpServer.authenticateRequest")(function* (httpEffect) {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const authorization = request.headers.authorization;
@@ -108,8 +134,8 @@ const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
         authorization?.startsWith("Bearer ") === true
           ? authorization.slice("Bearer ".length).trim()
           : "";
-      const invocation = yield* registry.resolve(token);
-      if (!invocation) {
+      const credential = yield* registry.resolve(token);
+      if (!credential) {
         // Without this the only symptom of a dead credential is the agent
         // quietly losing the whole `t3-code` toolkit for the rest of its
         // session, with nothing on the server to explain why.
@@ -118,6 +144,7 @@ const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
         });
         return unauthorized;
       }
+      const invocation = yield* withCrossProjectGrant(credential, settings);
       return yield* httpEffect.pipe(
         Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
         Effect.map(normalizeMcpHttpResponse),

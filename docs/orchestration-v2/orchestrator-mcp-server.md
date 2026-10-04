@@ -333,8 +333,9 @@ launching again. `create_threads` remains the batch option for a shared checkout
 
 Lists durable thread shells in the calling thread's project, newest first.
 Callers can filter by title, run status, and whether app-owned sub-agent threads
-are included. Results are bounded and offset-paginated. Deleted threads and
-threads from other projects are never exposed.
+are included. Results are bounded and offset-paginated. Each item carries its
+`projectId`. Deleted threads are never exposed, and threads from other projects
+are exposed only to a [cross-project orchestrator](#cross-project-orchestration).
 
 ### `t3_thread_read`
 
@@ -367,7 +368,8 @@ detail also exposes an in-flight title regeneration.
 
 ### `t3_thread_send`
 
-Sends a message to an ordinary or delegated thread in the calling project:
+Sends a message to an ordinary or delegated thread in the calling project, or
+in any project for a cross-project orchestrator:
 
 - `auto` starts an idle thread, steers a fully active turn, or queues behind a
   turn that is not yet steerable;
@@ -428,15 +430,47 @@ idempotent.
 A failed run exposes its provider error before any progress text. Successful
 results use the latest assistant content from the final work turn.
 
+## Cross-Project Orchestration
+
+A user can grant one thread the reach to manage threads in every project, for a
+chief-of-staff thread that coordinates work across them. The grant lives in the
+server setting `crossProjectOrchestratorThreadIds`, toggled per thread with
+"Orchestrate all projects" in the thread's action menu (sidebar row and chat
+header). Only the user can grant it: the MCP preferences tool does not expose
+the setting.
+
+The MCP endpoint reads the setting on every request and adds the
+`cross-project` capability to a granted thread's invocation scope, so a grant
+or revoke applies to the thread's next tool call without rotating its
+credential. An unreadable settings file grants nothing.
+
+With the capability, thread lookup resolves a caller-supplied thread ID in the
+target thread's own project instead of the caller's. That covers
+`t3_thread_list`, `t3_thread_read`, `t3_thread_search`, `t3_thread_update`,
+`t3_thread_send`, `t3_thread_wait`, `t3_thread_interrupt`,
+`t3_thread_organize`, `t3_thread_send_attachments`, the pending-request tools,
+the queue tools, and the configuration and transfer reads.
+
+The grant widens reach, not privilege. Send, organize, queue edits, and
+pending-request responses still refuse a target whose runtime or interaction
+mode is broader than the caller's. Scheduled tasks, worktree tools, project
+tools, and thread launch keep the caller's project.
+
 ## Policy And Idempotency
 
 - A child runtime mode may stay equal to or become narrower than the parent
   mode. It may not escalate privileges.
 - A child interaction mode may stay equal to or narrow from `default` to
   `plan`. It may not escalate from `plan` to `default`.
-- General thread management is limited to the calling thread's project. Send
-  additionally enforces the same runtime and interaction privilege ceiling as
-  child creation.
+- General thread management is limited to the calling thread's project unless
+  the user granted the caller [cross-project orchestration](#cross-project-orchestration).
+  Send and the other thread mutations additionally enforce the same runtime and
+  interaction privilege ceiling as child creation, with or without the grant.
+- A thread that settles itself with `t3_thread_organize` while its turn runs
+  settles when that run ends; the result carries `settlesWhenRunEnds: true`.
+  Settling rejects a thread with an active run, and a caller's own thread is
+  always mid-run. The deferred settle is held in memory, so a server restart
+  before the run ends drops it.
 - Provider instances must be enabled, installed, available, authenticated, and
   backed by a V2 adapter.
 - A requested model must be advertised by the selected provider when the

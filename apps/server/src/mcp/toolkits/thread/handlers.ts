@@ -23,6 +23,8 @@ import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { ThreadToolkit } from "./tools.ts";
 
+const SELF_SETTLE_WAIT_MS = 24 * 60 * 60 * 1_000;
+
 function queueEntry(
   projection: Pick<OrchestrationV2ThreadProjection, "runs" | "messages">,
   runId: RunId,
@@ -108,10 +110,15 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
     }),
   t3_thread_search: (input) =>
     Effect.gen(function* () {
-      const { caller } = yield* readCaller();
+      const { scope, caller } = yield* readCaller();
       const threadSearch = yield* ThreadSearch.ThreadSearch;
       const result = yield* threadSearch.search(input).pipe(Effect.mapError(unavailable));
-      return { matches: result.matches.filter((match) => match.projectId === caller.projectId) };
+      return {
+        matches: result.matches.filter(
+          (match) =>
+            scope.capabilities.has("cross-project") || match.projectId === caller.projectId,
+        ),
+      };
     }),
   t3_thread_fork: (input) =>
     Effect.gen(function* () {
@@ -274,7 +281,7 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
     })),
   t3_thread_organize: (input) =>
     Effect.gen(function* () {
-      const { threads, projection } = yield* readWritableThread(input.threadId);
+      const { threads, projection, caller } = yield* readWritableThread(input.threadId);
       const common = { commandId: yield* newCommandId(), threadId: projection.thread.id };
       let command: OrchestrationV2Command;
       switch (input.action) {
@@ -296,6 +303,31 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
           break;
         default:
           command = { ...common, type: `thread.${input.action}` };
+      }
+      // The settle guard rejects a thread with an active run, and a thread
+      // settling itself is always mid-run. Settle it once that run ends.
+      if (
+        command.type === "thread.settle" &&
+        projection.thread.id === caller.id &&
+        caller.activeRunId !== null
+      ) {
+        // ponytail: an in-memory wait; a server restart before the run ends drops the settle.
+        yield* threads
+          .waitForThread({
+            projectId: caller.projectId,
+            threadId: caller.id,
+            runId: caller.activeRunId,
+            timeoutMs: SELF_SETTLE_WAIT_MS,
+          })
+          .pipe(
+            Effect.flatMap((result) => (result.timedOut ? Effect.void : threads.dispatch(command))),
+            Effect.ignoreCause({ log: true }),
+            Effect.forkDetach,
+          );
+        const sequence = yield* threads
+          .getThreadEventSequence(caller.id)
+          .pipe(Effect.mapError(unavailable));
+        return { sequence, settlesWhenRunEnds: true };
       }
       const result = yield* threads.dispatch(command).pipe(Effect.mapError(unavailable));
       return { sequence: result.sequence };
