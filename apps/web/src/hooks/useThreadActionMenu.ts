@@ -21,10 +21,12 @@ import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import {
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsCrossProjectOrchestration,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
+  readThreadIsCrossProjectOrchestrator,
   readThreadShell,
   useProjects,
 } from "../state/entities";
@@ -90,6 +92,7 @@ export function useThreadActionMenu(input: {
     pinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadCrossProjectOrchestrator,
     archiveThread,
     deleteThread,
     markThreadUnread,
@@ -135,6 +138,9 @@ export function useThreadActionMenu(input: {
         const supports = {
           settlement: readEnvironmentSupportsSettlement(threadRef.environmentId),
           autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
+          crossProjectOrchestration: readEnvironmentSupportsCrossProjectOrchestration(
+            threadRef.environmentId,
+          ),
           snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
           pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
           titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
@@ -147,6 +153,7 @@ export function useThreadActionMenu(input: {
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",
           autoSettleEnabled: thread.autoSettleDisabledAt == null,
+          isCrossProjectOrchestrator: readThreadIsCrossProjectOrchestrator(threadRef),
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           isRegeneratingTitle,
@@ -231,6 +238,14 @@ export function useThreadActionMenu(input: {
           case "auto-settle:disabled":
             await reportFailure("Failed to update auto-settle", () =>
               setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
+            );
+            return;
+          case "cross-project-orchestrator":
+            await reportFailure("Failed to update cross-project orchestration", () =>
+              setThreadCrossProjectOrchestrator(
+                threadRef,
+                !readThreadIsCrossProjectOrchestrator(threadRef),
+              ),
             );
             return;
           case "rename":
@@ -342,6 +357,7 @@ export function useThreadActionMenu(input: {
       projects,
       router,
       setThreadAutoSettle,
+      setThreadCrossProjectOrchestrator,
       settleThread,
       snoozeThread,
       threadRef,
