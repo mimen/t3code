@@ -108,10 +108,15 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
     }),
   t3_thread_search: (input) =>
     Effect.gen(function* () {
-      const { caller } = yield* readCaller();
+      const { scope, caller } = yield* readCaller();
       const threadSearch = yield* ThreadSearch.ThreadSearch;
       const result = yield* threadSearch.search(input).pipe(Effect.mapError(unavailable));
-      return { matches: result.matches.filter((match) => match.projectId === caller.projectId) };
+      return {
+        matches: result.matches.filter(
+          (match) =>
+            scope.capabilities.has("cross-project") || match.projectId === caller.projectId,
+        ),
+      };
     }),
   t3_thread_fork: (input) =>
     Effect.gen(function* () {
@@ -294,10 +299,16 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
         case "mark_unread":
           command = { ...common, type: "thread.mark-unread" };
           break;
+        case "settle":
+          // A busy thread, including the caller itself mid-turn, settles when its turn ends.
+          command = { ...common, type: "thread.settle", whenIdle: true };
+          break;
         default:
           command = { ...common, type: `thread.${input.action}` };
       }
       const result = yield* threads.dispatch(command).pipe(Effect.mapError(unavailable));
-      return { sequence: result.sequence };
+      if (command.type !== "thread.settle") return { sequence: result.sequence };
+      const settled = result.storedEvents.some(({ event }) => event.type === "thread.settled");
+      return { sequence: result.sequence, ...(settled ? {} : { settlesWhenRunEnds: true }) };
     }),
 });

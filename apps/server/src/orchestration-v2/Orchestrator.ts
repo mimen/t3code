@@ -2512,6 +2512,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const blockingRequestExists = pendingRequests.some(
         (request) => request.kind !== "user_input" || request.responseCapability.type !== "message",
       );
+      if (activeRunExists && command.whenIdle === true) {
+        // Recorded on the thread so it survives a restart; handleTerminalRun
+        // and startup recovery apply it once the thread goes idle.
+        const now = yield* DateTime.now;
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "thread.metadata-updated",
+          threadId: command.threadId,
+          occurredAt: now,
+          payload: { ...thread, settleRequestedAt: thread.settleRequestedAt ?? now },
+        });
+        return;
+      }
       if (activeRunExists || blockingRequestExists) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -2686,6 +2701,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             settledOverride: "settled",
             settledAt: alreadySettled ? thread.settledAt : (command.settledAt ?? now),
             unsettledAt: null,
+            settleRequestedAt: null,
             pinnedAt: null,
             pinOrderKey: null,
             activeOrderKey: null,
@@ -2698,6 +2714,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...thread,
             settledOverride: "active",
             settledAt: null,
+            settleRequestedAt: null,
             unsettledAt: alreadyPinnedActive ? (thread.unsettledAt ?? null) : now,
             updatedAt: alreadyPinnedActive ? thread.updatedAt : now,
           };
@@ -4407,6 +4424,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }
       }
 
+      if (
+        projection.thread.settleRequestedAt != null &&
+        command.notification === undefined &&
+        command.delegatedCompletion === undefined
+      ) {
+        // New work for the thread: it is no longer done when this run ends.
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "thread.metadata-updated",
+          threadId: command.threadId,
+          occurredAt: yield* DateTime.now,
+          payload: { ...projection.thread, settleRequestedAt: null },
+        });
+        projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+      }
       if (projection.thread.settledOverride !== null) {
         const now = yield* DateTime.now;
         const thread: OrchestrationV2AppThread = {
@@ -6750,13 +6784,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Parent node ${command.parentNodeId} is not the root of run ${command.parentRunId}.`,
         });
       }
-      if (parentProjection.thread.projectId !== targetProjection.thread.projectId) {
-        return yield* new OrchestratorDispatchError({
-          commandId: command.commandId,
-          commandType: command.type,
-          cause: `Target thread ${command.targetThreadId} belongs to another project.`,
-        });
-      }
+      // The record may point across projects: a thread granted cross-project
+      // orchestration creates threads elsewhere, gated in the MCP layer.
       if (
         command.targetRunId !== null &&
         !targetProjection.runs.some((candidate) => candidate.id === command.targetRunId)
@@ -9868,6 +9897,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const dispatchWithReceipt = (command: OrchestrationV2ServerCommand) =>
     threadDispatch.withLock(commandThreadId(command), dispatchWithReceiptEffect(command));
 
+  /** Applies a settle deferred by `thread.settle` with `whenIdle` once the thread is idle. */
+  const applyRequestedSettle = (threadId: ThreadId, attempt: string) =>
+    Effect.gen(function* () {
+      const thread = yield* projectionStore.getThread(threadId);
+      if (thread.settleRequestedAt == null || thread.deletedAt !== null) return;
+      const records = yield* projectionStore.getThreadRecords(threadId, ["runs"]);
+      if (records.runs.some(isBlockingRun)) return;
+      // Rejection (new work started meanwhile) keeps the request for the next terminal run.
+      yield* dispatchWithReceipt({
+        type: "thread.settle",
+        commandId: CommandId.make(`server:settle-when-idle:${threadId}:${attempt}`),
+        threadId,
+      });
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Deferred thread settle not applied", { threadId, cause }),
+      ),
+    );
+
   const handleTerminalRun = (stored: OrchestrationV2StoredEvent) =>
     Effect.gen(function* () {
       const threadId = stored.event.threadId;
@@ -9896,6 +9944,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             : undefined,
         ),
       );
+      yield* applyRequestedSettle(threadId, String(stored.sequence));
     }).pipe(
       Effect.catchCause((cause) =>
         Effect.logWarning("Failed to react to terminal V2 run", {
@@ -9935,6 +9984,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   // worker. Queue recovery instead holds unstarted runs until an explicit
   // queue.resume command arrives.
   const recoverDelegatedTasks = Effect.gen(function* () {
+    const startedAt = DateTime.toEpochMillis(yield* DateTime.now);
+    yield* projectionStore.getRecoveryThreadIds("requested-settles").pipe(
+      Effect.flatMap((threadIds) =>
+        Effect.forEach(
+          threadIds,
+          (threadId) => applyRequestedSettle(threadId, `startup:${startedAt}`),
+          { concurrency: 8, discard: true },
+        ),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Failed to inspect requested settles during recovery", { cause }),
+      ),
+    );
     yield* projectionStore.getRecoveryThreadIds("subagent-results").pipe(
       Effect.flatMap((threadIds) =>
         Effect.forEach(

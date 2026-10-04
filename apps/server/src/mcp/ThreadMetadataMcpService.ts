@@ -15,7 +15,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
-import type { McpInvocationScope } from "./McpInvocationContext.ts";
+import { lookupProjectId, type McpInvocationScope } from "./McpInvocationContext.ts";
 
 export class ThreadMetadataMcpService extends Context.Service<
   ThreadMetadataMcpService,
@@ -173,9 +173,24 @@ const make = Effect.gen(function* () {
     const target =
       threadId === scope.threadId
         ? parent
-        : yield* threadManagement
-            .getProjectThreadRecords({ projectId: parent.thread.projectId, threadId }, [])
-            .pipe(Effect.mapError(threadLookupFailure));
+        : yield* lookupProjectId({
+            scope,
+            callerProjectId: parent.thread.projectId,
+            threadId,
+            getThreadShell: threadManagement.getThreadShell,
+          }).pipe(
+            Effect.mapError((error) =>
+              failure(
+                "orchestration_error",
+                `Unable to locate thread ${threadId}: ${errorMessage(error)}`,
+              ),
+            ),
+            Effect.flatMap((projectId) =>
+              threadManagement
+                .getProjectThreadRecords({ projectId, threadId }, [])
+                .pipe(Effect.mapError(threadLookupFailure)),
+            ),
+          );
     const requestKey =
       input.clientRequestId === undefined
         ? yield* crypto.randomUUIDv4.pipe(Effect.orDie)

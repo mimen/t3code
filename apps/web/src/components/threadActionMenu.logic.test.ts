@@ -12,6 +12,7 @@ const baseState: ThreadActionMenuState = {
   isPinned: false,
   isSettled: false,
   autoSettleEnabled: true,
+  isCrossProjectOrchestrator: false,
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
@@ -19,6 +20,7 @@ const baseState: ThreadActionMenuState = {
   supports: {
     settlement: true,
     autoSettleOptOut: true,
+    crossProjectOrchestration: true,
     snooze: true,
     pinning: true,
     titleRegeneration: true,
@@ -46,6 +48,7 @@ describe("buildThreadActionMenuItems", () => {
         supports: {
           settlement: false,
           autoSettleOptOut: false,
+          crossProjectOrchestration: false,
           snooze: false,
           pinning: false,
           titleRegeneration: false,
@@ -156,12 +159,23 @@ describe("buildThreadActionMenuItems", () => {
         supports: {
           settlement: false,
           autoSettleOptOut: false,
+          crossProjectOrchestration: false,
           snooze: false,
           pinning: false,
           titleRegeneration: false,
         },
       }),
     ).toContain("archive");
+  });
+
+  it("shows the cross-project grant as a checked toggle only when the server honors it", () => {
+    const find = (state: ThreadActionMenuState) =>
+      buildThreadActionMenuItems(state).find((item) => item.id === "cross-project-orchestrator");
+    expect(find(baseState)?.checked).toBe(false);
+    expect(find({ ...baseState, isCrossProjectOrchestrator: true })?.checked).toBe(true);
+    expect(
+      find({ ...baseState, supports: { ...baseState.supports, crossProjectOrchestration: false } }),
+    ).toBeUndefined();
   });
 
   it("disables archive while the thread is running", () => {

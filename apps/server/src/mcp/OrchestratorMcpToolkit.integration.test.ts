@@ -2380,6 +2380,195 @@ describe("orchestrator MCP toolkit", () => {
               listed.threads.some((thread) => thread.relationshipToParent === "subagent"),
             ).toBe(false);
 
+            // The user's cross-project grant reaches the same foreign thread.
+            const orchestratorInvocation: McpInvocationContext.McpInvocationScope = {
+              ...invocation,
+              capabilities: new Set(["orchestration", "cross-project"]),
+            };
+            const invokeOrchestrator = (name: string, args: Record<string, unknown>) =>
+              invokeAs(orchestratorInvocation, name, args);
+            const grantedListCall = yield* invokeOrchestrator("t3_thread_list", { limit: 100 });
+            const grantedList = yield* decodeThreadListResult(
+              grantedListCall.structuredContent,
+            ).pipe(Effect.orDie);
+            expect(
+              grantedList.threads.find((thread) => thread.threadId === foreignThreadId),
+            ).toMatchObject({ projectId: ProjectId.make("project:mcp-foreign") });
+            const grantedReadCall = yield* invokeOrchestrator("t3_thread_read", {
+              threadId: foreignThreadId,
+            });
+            expect(
+              (yield* decodeThreadReadResult(grantedReadCall.structuredContent).pipe(Effect.orDie))
+                .thread.threadId,
+            ).toBe(foreignThreadId);
+            const grantedPendingCall = yield* invokeOrchestrator("t3_pending_request_list", {
+              threadId: foreignThreadId,
+            });
+            expect(grantedPendingCall.structuredContent).toEqual({ requestIds: [] });
+            const grantedOrganizeCall = yield* invokeOrchestrator("t3_thread_organize", {
+              threadId: foreignThreadId,
+              action: "pin",
+            });
+            expect(grantedOrganizeCall.structuredContent).toHaveProperty("sequence");
+            expect((yield* orchestrator.getThreadShell(foreignThreadId))?.pinnedAt).not.toBeNull();
+            const grantedUpdateCall = yield* invokeOrchestrator("t3_thread_update", {
+              threadId: foreignThreadId,
+              action: "rename",
+              title: "Renamed across projects",
+            });
+            expect(grantedUpdateCall.isError).toBe(false);
+            const grantedSendCall = yield* invokeOrchestrator("t3_thread_send", {
+              threadId: foreignThreadId,
+              message: "Report status from the foreign project.",
+              clientRequestId: "cross-project-send-1",
+            });
+            const grantedSend = yield* decodeThreadSendResult(
+              grantedSendCall.structuredContent,
+            ).pipe(Effect.orDie);
+            expect(grantedSend.threadId).toBe(foreignThreadId);
+            const grantedWaitCall = yield* invokeOrchestrator("t3_thread_wait", {
+              threadId: foreignThreadId,
+              runId: grantedSend.runId,
+              timeoutMs: 10_000,
+            });
+            expect(
+              (yield* decodeThreadWaitResult(grantedWaitCall.structuredContent).pipe(Effect.orDie))
+                .status,
+            ).toBe("completed");
+            const grantedInterruptCall = yield* invokeOrchestrator("t3_thread_interrupt", {
+              threadId: foreignThreadId,
+            });
+            expect(
+              (yield* decodeThreadInterruptResult(grantedInterruptCall.structuredContent).pipe(
+                Effect.orDie,
+              )).status,
+            ).toBe("no_active_run");
+
+            // The grant widens reach, never privilege: a foreign thread with a
+            // broader runtime mode than the caller's still refuses sends.
+            const narrowCallerThreadId = ThreadId.make("thread:mcp-cross-project-narrow");
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:mcp-cross-project-narrow:create"),
+              threadId: narrowCallerThreadId,
+              projectId,
+              title: "Approval-required orchestrator",
+              modelSelection: codexSelection,
+              runtimeMode: "approval-required",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: cwd,
+            });
+            parentTerminalGates.set(narrowCallerThreadId, yield* Deferred.make<void>());
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:mcp-cross-project-narrow:start"),
+              threadId: narrowCallerThreadId,
+              messageId: MessageId.make("message:mcp-cross-project-narrow:start"),
+              text: "Hold this orchestrator open.",
+              attachments: [],
+              modelSelection: codexSelection,
+              dispatchMode: { type: "start_immediately" },
+            });
+            yield* waitForProjection(orchestrator, narrowCallerThreadId, (projection) =>
+              projection.providerTurns.some((turn) => turn.status === "running"),
+            );
+            const narrowInvocation: McpInvocationContext.McpInvocationScope = {
+              ...orchestratorInvocation,
+              threadId: narrowCallerThreadId,
+              providerSessionId: "mcp-provider-session-narrow",
+            };
+            const ceilingSendCall = yield* invokeAs(narrowInvocation, "t3_thread_send", {
+              threadId: foreignThreadId,
+              message: "This must not reach a full-access thread.",
+            });
+            expect(ceilingSendCall.structuredContent).toMatchObject({
+              code: "runtime_mode_escalation_denied",
+            });
+            const ceilingOrganizeCall = yield* invokeAs(narrowInvocation, "t3_thread_organize", {
+              threadId: foreignThreadId,
+              action: "unpin",
+            });
+            expect(ceilingOrganizeCall.structuredContent).toMatchObject({
+              code: "runtime_mode_escalation_denied",
+            });
+            expect((yield* orchestrator.getThreadShell(foreignThreadId))?.pinnedAt).not.toBeNull();
+            const ceilingReadCall = yield* invokeAs(narrowInvocation, "t3_thread_read", {
+              threadId: foreignThreadId,
+            });
+            expect(ceilingReadCall.isError).toBe(false);
+
+            // create_threads reaches another project only with the grant, at
+            // that project's root rather than the caller's checkout.
+            const foreignProjectId = ProjectId.make("project:mcp-foreign");
+            const deniedCreateCall = yield* invoke("create_threads", {
+              clientRequestId: "cross-project-create-denied",
+              threads: [{ title: "Denied foreign thread", projectId: foreignProjectId }],
+            });
+            expect(deniedCreateCall.structuredContent).toMatchObject({
+              code: "capability_denied",
+            });
+            const grantedCreateCall = yield* invokeOrchestrator("create_threads", {
+              clientRequestId: "cross-project-create-granted",
+              threads: [{ title: "Foreign created thread", projectId: foreignProjectId }],
+            });
+            const grantedCreate = yield* decodeCreateThreadsResult(
+              grantedCreateCall.structuredContent,
+            ).pipe(Effect.orDie);
+            const foreignCreated = yield* orchestrator.getThreadShell(
+              grantedCreate.threads[0]!.threadId,
+            );
+            expect(foreignCreated).toMatchObject({
+              projectId: foreignProjectId,
+              worktreePath: null,
+              branch: null,
+            });
+
+            // Settling a busy thread, the caller's own included, takes effect
+            // when its turn ends instead of failing the active-run guard.
+            const otherSettleCall = yield* invoke("t3_thread_organize", {
+              threadId: narrowCallerThreadId,
+              action: "settle",
+            });
+            expect(otherSettleCall.structuredContent).toMatchObject({ settlesWhenRunEnds: true });
+            // A new message means the thread is not done; it cancels the request.
+            yield* invoke("t3_thread_send", {
+              threadId: narrowCallerThreadId,
+              message: "One more check before you finish.",
+              mode: "queue",
+              clientRequestId: "cancel-pending-settle",
+            });
+            expect(
+              (yield* orchestrator.getThreadProjection(narrowCallerThreadId)).thread
+                .settleRequestedAt ?? null,
+            ).toBeNull();
+            const queuedFollowUp = (yield* orchestrator.getThreadProjection(
+              narrowCallerThreadId,
+            )).runs.find((run) => run.status === "queued");
+            yield* orchestrator.dispatch({
+              type: "queued-run.cancel",
+              commandId: CommandId.make("command:mcp-cross-project-narrow:drop-follow-up"),
+              threadId: narrowCallerThreadId,
+              runId: queuedFollowUp!.id,
+            });
+            const selfSettleCall = yield* invokeAs(narrowInvocation, "t3_thread_organize", {
+              action: "settle",
+            });
+            expect(selfSettleCall.structuredContent).toMatchObject({ settlesWhenRunEnds: true });
+            expect(
+              (yield* orchestrator.getThreadShell(narrowCallerThreadId))?.settledOverride,
+            ).not.toBe("settled");
+            yield* Deferred.succeed(parentTerminalGates.get(narrowCallerThreadId)!, undefined);
+            yield* waitForProjection(
+              orchestrator,
+              narrowCallerThreadId,
+              (projection) => projection.thread.settledOverride === "settled",
+            );
+
             // A wait-mode delegation whose blocking wait times out no longer
             // owns delivery, so delegate_task upgrades the task to "always".
             // Its terminal then wakes the parent even mid-turn.

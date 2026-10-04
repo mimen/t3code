@@ -19,7 +19,7 @@ import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../component
 import { useComposerDraftStore } from "../composerDraftStore";
 import { terminalEnvironment } from "../state/terminal";
 import { appAtomRegistry } from "../rpc/atomRegistry";
-import { environmentServerConfigsAtom } from "../state/server";
+import { environmentServerConfigsAtom, serverEnvironment } from "../state/server";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { threadEnvironment } from "../state/threads";
 import { vcsEnvironment } from "../state/vcs";
@@ -29,6 +29,7 @@ import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { readLocalApi } from "../localApi";
 import {
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsCrossProjectOrchestration,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsPinReorder,
   readEnvironmentSupportsActiveReorder,
@@ -108,6 +109,18 @@ function topOfPinnedRunOrderKey(): string | undefined {
     if (firstKey === null || shell.pinOrderKey < firstKey) firstKey = shell.pinOrderKey;
   }
   return pinOrderKeyBetween(null, firstKey) ?? undefined;
+}
+
+export class ThreadCrossProjectOrchestrationUnsupportedError extends Schema.TaggedError<ThreadCrossProjectOrchestrationUnsupportedError>()(
+  "ThreadCrossProjectOrchestrationUnsupportedError",
+  {
+    environmentId: EnvironmentId,
+    threadId: ThreadId,
+  },
+) {
+  override get message(): string {
+    return "This environment's server does not support cross-project orchestration yet. Update the server to use it.";
+  }
 }
 
 export class ThreadAutoSettleOptOutUnsupportedError extends Schema.TaggedError<ThreadAutoSettleOptOutUnsupportedError>()(
@@ -267,6 +280,9 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const setThreadAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
+    reportFailure: false,
+  });
+  const updateServerSettings = useAtomCommand(serverEnvironment.updateSettings, {
     reportFailure: false,
   });
   const reorderPinnedThreadMutation = useAtomCommand(threadEnvironment.reorderPin, {
@@ -653,6 +669,35 @@ export function useThreadActions() {
     [setThreadAutoSettleMutation],
   );
 
+  /** Grants or revokes the thread's MCP thread tools across every project. */
+  const setThreadCrossProjectOrchestrator = useCallback(
+    async (target: ScopedThreadRef, enabled: boolean) => {
+      if (!readEnvironmentSupportsCrossProjectOrchestration(target.environmentId)) {
+        return AsyncResult.failure(
+          Cause.fail(
+            new ThreadCrossProjectOrchestrationUnsupportedError({
+              environmentId: target.environmentId,
+              threadId: target.threadId,
+            }),
+          ),
+        );
+      }
+      const current =
+        appAtomRegistry.get(serverEnvironment.settingsValueAtom(target.environmentId))
+          ?.crossProjectOrchestratorThreadIds ?? [];
+      const others = current.filter((threadId) => threadId !== target.threadId);
+      return updateServerSettings({
+        environmentId: target.environmentId,
+        input: {
+          patch: {
+            crossProjectOrchestratorThreadIds: enabled ? [...others, target.threadId] : others,
+          },
+        },
+      });
+    },
+    [updateServerSettings],
+  );
+
   const pinThread = useCallback(
     async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
       // Version skew: never send the command to a server that predates it.
@@ -974,6 +1019,7 @@ export function useThreadActions() {
       reorderActiveThread,
       markThreadUnread,
       setThreadAutoSettle,
+      setThreadCrossProjectOrchestrator,
     }),
     [
       archiveThread,
@@ -985,6 +1031,7 @@ export function useThreadActions() {
       reorderPinnedThread,
       reorderActiveThread,
       setThreadAutoSettle,
+      setThreadCrossProjectOrchestrator,
       settleThread,
       snoozeThread,
       unarchiveThread,

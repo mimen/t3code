@@ -2,6 +2,7 @@ import {
   type EnvironmentId,
   McpCapabilityUnavailableError,
   PreviewAutomationUnavailableError,
+  type ProjectId,
   type ProviderInstanceId,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -14,6 +15,9 @@ const ALL_MCP_CAPABILITIES = [
   "worktree",
   "device",
   "pull-requests",
+  // Never issued with a credential: the MCP endpoint adds it per request while
+  // the user lists the thread in `crossProjectOrchestratorThreadIds`.
+  "cross-project",
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 
@@ -62,3 +66,22 @@ export const requireMcpCapability = <const C extends McpCapability>(
     ),
     Effect.withSpan("mcp.requireCapability"),
   );
+
+/**
+ * The project a caller-supplied thread id is looked up in. Without the user's
+ * cross-project grant that is always the caller's project, so a thread
+ * elsewhere reads as not found; with it, the thread's own project.
+ */
+export const lookupProjectId = <E>(input: {
+  readonly scope: McpInvocationScope;
+  readonly callerProjectId: ProjectId;
+  readonly threadId: ThreadId;
+  readonly getThreadShell: (
+    threadId: ThreadId,
+  ) => Effect.Effect<{ readonly projectId: ProjectId } | null, E>;
+}): Effect.Effect<ProjectId, E> =>
+  input.scope.capabilities.has("cross-project")
+    ? input
+        .getThreadShell(input.threadId)
+        .pipe(Effect.map((shell) => shell?.projectId ?? input.callerProjectId))
+    : Effect.succeed(input.callerProjectId);

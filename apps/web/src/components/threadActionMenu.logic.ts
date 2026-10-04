@@ -17,6 +17,7 @@ export type ThreadActionMenuId =
   | "auto-settle"
   | "auto-settle:enabled"
   | "auto-settle:disabled"
+  | "cross-project-orchestrator"
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
@@ -84,6 +85,8 @@ export interface ThreadActionMenuState {
   readonly isSettled: boolean;
   /** False while the user has turned automatic settlement off for this thread. */
   readonly autoSettleEnabled: boolean;
+  /** The user granted this thread's agent thread tools across every project. */
+  readonly isCrossProjectOrchestrator: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
@@ -93,6 +96,8 @@ export interface ThreadActionMenuState {
     readonly settlement: boolean;
     /** Server understands thread.auto-settle.set. */
     readonly autoSettleOptOut: boolean;
+    /** Server honors crossProjectOrchestratorThreadIds. */
+    readonly crossProjectOrchestration: boolean;
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
@@ -199,6 +204,17 @@ export function buildThreadActionMenuItems(
                 checked: !state.autoSettleEnabled,
               },
             ],
+          },
+        ]
+      : []),
+    // A grant only the user can make: agents cannot write server settings.
+    ...(state.supports.crossProjectOrchestration
+      ? [
+          {
+            id: "cross-project-orchestrator" as const,
+            label: "Orchestrate all projects",
+            icon: "folder-tree",
+            checked: state.isCrossProjectOrchestrator,
           },
         ]
       : []),

@@ -148,6 +148,7 @@ import {
   usePrimaryEnvironmentId,
 } from "../state/environments";
 import {
+  readThreadIsCrossProjectOrchestrator,
   readThreadShell,
   useAllEnvironmentProjectSnapshotsReady,
   useProjects,
@@ -2343,6 +2344,7 @@ export default function Sidebar() {
     unpinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadCrossProjectOrchestrator,
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
@@ -4451,6 +4453,10 @@ export default function Sidebar() {
         const supportsTitleRegeneration =
           serverConfigs.get(thread.environmentId)?.environment.capabilities
             .threadTitleRegeneration === true;
+        const supportsCrossProjectOrchestration =
+          serverConfigs.get(thread.environmentId)?.environment.capabilities
+            .crossProjectOrchestration === true;
+        const isCrossProjectOrchestrator = readThreadIsCrossProjectOrchestrator(threadRef);
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
@@ -4478,6 +4484,7 @@ export default function Sidebar() {
               isPinned,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
+              isCrossProjectOrchestrator,
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
@@ -4485,6 +4492,7 @@ export default function Sidebar() {
               supports: {
                 settlement: supportsSettlement,
                 autoSettleOptOut: supportsAutoSettleOptOut,
+                crossProjectOrchestration: supportsCrossProjectOrchestration,
                 snooze: supportsSnooze,
                 pinning: supportsPinning,
                 titleRegeneration: supportsTitleRegeneration,
@@ -4568,6 +4576,23 @@ export default function Sidebar() {
                 stackedThreadToast({
                   type: "error",
                   title: "Failed to update auto-settle",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
+          case "cross-project-orchestrator": {
+            const result = await setThreadCrossProjectOrchestrator(
+              threadRef,
+              !isCrossProjectOrchestrator,
+            );
+            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Failed to update cross-project orchestration",
                   description: error instanceof Error ? error.message : "An error occurred.",
                 }),
               );
@@ -4701,6 +4726,7 @@ export default function Sidebar() {
       serverConfigs,
       setProjectScopeKey,
       setThreadAutoSettle,
+      setThreadCrossProjectOrchestrator,
       startThreadRename,
       updateThreadMetadata,
       timestampFormat,

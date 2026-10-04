@@ -14,7 +14,7 @@ import type { EnvironmentId, OrchestrationV2ProjectedTurnItem } from "@t3tools/c
 import { Atom } from "effect/unstable/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentProjects } from "./projects";
-import { environmentServerConfigsAtom } from "./server";
+import { environmentServerConfigsAtom, serverEnvironment } from "./server";
 import {
   allEnvironmentProjectSnapshotsReadyAtom,
   allEnvironmentShellsBootstrappedAtom,
@@ -216,6 +216,25 @@ export function readEnvironmentSupportsPinReorder(environmentId: EnvironmentId):
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
       .threadPinReorder === true
+  );
+}
+
+/** Whether the environment's server honors crossProjectOrchestratorThreadIds. */
+export function readEnvironmentSupportsCrossProjectOrchestration(
+  environmentId: EnvironmentId,
+): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .crossProjectOrchestration === true
+  );
+}
+
+/** Whether the thread's server lists it as a cross-project orchestrator. */
+export function readThreadIsCrossProjectOrchestrator(target: ScopedThreadRef): boolean {
+  return (
+    appAtomRegistry
+      .get(serverEnvironment.settingsValueAtom(target.environmentId))
+      ?.crossProjectOrchestratorThreadIds.includes(target.threadId) === true
   );
 }
 
