@@ -1276,3 +1276,76 @@ it.layer(TestLayer)("delegated tasks across a server restart", (it) => {
     }),
   );
 });
+
+it.layer(TestLayer)("deferred settle across a server restart", (it) => {
+  it.effect("applies a settle requested mid-run once recovery finds the thread idle", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:settle-when-idle");
+      const projectId = ProjectId.make("project:settle-when-idle");
+      const runId = RunId.make("run:settle-when-idle");
+      yield* projects.create({
+        commandId: CommandId.make("command:settle-when-idle:project"),
+        projectId,
+        title: "Deferred settle",
+        workspaceRoot: `/workspace/${projectId}`,
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("command:settle-when-idle:create"),
+        threadId,
+        projectId,
+        title: "Deferred settle",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      yield* eventSink.write({
+        commandId: CommandId.make("command:settle-when-idle:running"),
+        events: [runEvent({ threadId, runId, ordinal: 1, status: "running", now })],
+      });
+
+      const rejected = yield* orchestrator
+        .dispatch({
+          type: "thread.settle",
+          commandId: CommandId.make("command:settle-when-idle:plain"),
+          threadId,
+        })
+        .pipe(Effect.flip);
+      assert.equal(rejected._tag, "OrchestratorDispatchError");
+      yield* orchestrator.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("command:settle-when-idle:deferred"),
+        threadId,
+        whenIdle: true,
+      });
+      const pending = (yield* orchestrator.getThreadProjection(threadId)).thread;
+      assert.notEqual(pending.settledOverride, "settled");
+      assert.isNotNull(pending.settleRequestedAt ?? null);
+
+      // The run ends while the server is down: reconciliation writes the
+      // terminal run, which the live terminal listener skips.
+      yield* eventSink.write({
+        commandId: reconcileCommandId("settle-when-idle"),
+        events: [runEvent({ threadId, runId, ordinal: 1, status: "cancelled", now })],
+      });
+      assert.notEqual(
+        (yield* orchestrator.getThreadProjection(threadId)).thread.settledOverride,
+        "settled",
+      );
+
+      yield* orchestrator.recoverDelegatedTasks;
+
+      const settled = (yield* orchestrator.getThreadProjection(threadId)).thread;
+      assert.equal(settled.settledOverride, "settled");
+      assert.isNull(settled.settleRequestedAt ?? null);
+    }),
+  );
+});

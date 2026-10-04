@@ -2502,8 +2502,59 @@ describe("orchestrator MCP toolkit", () => {
             });
             expect(ceilingReadCall.isError).toBe(false);
 
-            // A thread settling itself mid-turn settles once the turn ends,
-            // instead of failing the active-run guard.
+            // create_threads reaches another project only with the grant, at
+            // that project's root rather than the caller's checkout.
+            const foreignProjectId = ProjectId.make("project:mcp-foreign");
+            const deniedCreateCall = yield* invoke("create_threads", {
+              clientRequestId: "cross-project-create-denied",
+              threads: [{ title: "Denied foreign thread", projectId: foreignProjectId }],
+            });
+            expect(deniedCreateCall.structuredContent).toMatchObject({
+              code: "capability_denied",
+            });
+            const grantedCreateCall = yield* invokeOrchestrator("create_threads", {
+              clientRequestId: "cross-project-create-granted",
+              threads: [{ title: "Foreign created thread", projectId: foreignProjectId }],
+            });
+            const grantedCreate = yield* decodeCreateThreadsResult(
+              grantedCreateCall.structuredContent,
+            ).pipe(Effect.orDie);
+            const foreignCreated = yield* orchestrator.getThreadShell(
+              grantedCreate.threads[0]!.threadId,
+            );
+            expect(foreignCreated).toMatchObject({
+              projectId: foreignProjectId,
+              worktreePath: null,
+              branch: null,
+            });
+
+            // Settling a busy thread, the caller's own included, takes effect
+            // when its turn ends instead of failing the active-run guard.
+            const otherSettleCall = yield* invoke("t3_thread_organize", {
+              threadId: narrowCallerThreadId,
+              action: "settle",
+            });
+            expect(otherSettleCall.structuredContent).toMatchObject({ settlesWhenRunEnds: true });
+            // A new message means the thread is not done; it cancels the request.
+            yield* invoke("t3_thread_send", {
+              threadId: narrowCallerThreadId,
+              message: "One more check before you finish.",
+              mode: "queue",
+              clientRequestId: "cancel-pending-settle",
+            });
+            expect(
+              (yield* orchestrator.getThreadProjection(narrowCallerThreadId)).thread
+                .settleRequestedAt ?? null,
+            ).toBeNull();
+            const queuedFollowUp = (yield* orchestrator.getThreadProjection(
+              narrowCallerThreadId,
+            )).runs.find((run) => run.status === "queued");
+            yield* orchestrator.dispatch({
+              type: "queued-run.cancel",
+              commandId: CommandId.make("command:mcp-cross-project-narrow:drop-follow-up"),
+              threadId: narrowCallerThreadId,
+              runId: queuedFollowUp!.id,
+            });
             const selfSettleCall = yield* invokeAs(narrowInvocation, "t3_thread_organize", {
               action: "settle",
             });

@@ -1630,6 +1630,14 @@ const make = Effect.gen(function* () {
                 parent.thread.interactionMode,
                 request.interactionMode,
               );
+              const projectId = request.projectId ?? parent.thread.projectId;
+              const sharesCheckout = projectId === parent.thread.projectId;
+              if (!sharesCheckout && !scope.capabilities.has("cross-project")) {
+                return yield* failure(
+                  "capability_denied",
+                  "Creating threads in another project requires the user to grant this thread cross-project orchestration.",
+                );
+              }
               const threadId = stableThreadId({
                 scope,
                 requestKey: key,
@@ -1653,13 +1661,14 @@ const make = Effect.gen(function* () {
                     index,
                   }),
                   threadId,
-                  projectId: parent.thread.projectId,
+                  projectId,
                   title,
                   modelSelection: target.modelSelection,
                   runtimeMode,
                   interactionMode,
-                  branch: parent.thread.branch,
-                  worktreePath: parent.thread.worktreePath,
+                  // The caller's checkout belongs to its own project's repository.
+                  branch: sharesCheckout ? parent.thread.branch : null,
+                  worktreePath: sharesCheckout ? parent.thread.worktreePath : null,
                 })
                 .pipe(
                   Effect.mapError((error) =>

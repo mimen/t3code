@@ -134,7 +134,8 @@ export type ProjectionRecoveryKind =
   | "queued-runs"
   | "runtime"
   | "subagent-results"
-  | "delegated-completions";
+  | "delegated-completions"
+  | "requested-settles";
 
 /** Persisted state needed for limit recovery, without transcript or fork history. */
 export type ProjectionLimitRecoveryCandidate = Pick<
@@ -505,6 +506,8 @@ function needsRecovery(
       );
     case "delegated-completions":
       return projection.runs.some((run) => run.delegatedCompletion?.delivery != null);
+    case "requested-settles":
+      return projection.thread.settleRequestedAt != null;
     case "subagent-results": {
       const parentThreadId = projection.thread.lineage.parentThreadId;
       return (
@@ -3413,6 +3416,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 SELECT thread_id FROM orchestration_v2_projection_runs
                 WHERE CASE WHEN json_valid(payload_json)
                   THEN json_type(payload_json, '$.delegatedCompletion.delivery') = 'object'
+                  ELSE 0 END
+              `;
+            case "requested-settles":
+              return sql`
+                SELECT thread_id FROM orchestration_v2_projection_threads
+                WHERE deleted_at IS NULL AND CASE WHEN json_valid(payload_json)
+                  THEN json_type(payload_json, '$.settleRequestedAt') = 'text'
                   ELSE 0 END
               `;
             case "subagent-results":

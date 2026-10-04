@@ -327,7 +327,9 @@ workspace does not. `scratch: true` launches without a project, in a folder of
 its own under the environment's Scratch project. For stacked PRs, use the parent branch as `baseRef` with
 `startFromOrigin: false`. Launch requires a full-access/default caller and has
 no retry key, so inspect existing threads after a failed or lost response before
-launching again. `create_threads` remains the batch option for a shared checkout.
+launching again. `create_threads` remains the batch option for a shared checkout;
+see [cross-project orchestration](#cross-project-orchestration) for creating
+threads in another project.
 
 ### `t3_thread_list`
 
@@ -451,10 +453,23 @@ target thread's own project instead of the caller's. That covers
 `t3_thread_organize`, `t3_thread_send_attachments`, the pending-request tools,
 the queue tools, and the configuration and transfer reads.
 
+It also lets `create_threads` take a per-thread `projectId`. A thread created
+in another project starts at that project's root, because the caller's branch
+and worktree belong to a different repository. Without the grant, a foreign
+`projectId` returns `capability_denied`. `t3_thread_launch` already accepts any
+`projectId` from a full-access/default caller and is unchanged.
+
 The grant widens reach, not privilege. Send, organize, queue edits, and
 pending-request responses still refuse a target whose runtime or interaction
-mode is broader than the caller's. Scheduled tasks, worktree tools, project
-tools, and thread launch keep the caller's project.
+mode is broader than the caller's. Scheduled tasks and worktree tools keep the
+caller's project.
+
+The grant is a server setting rather than a thread field. Server settings
+already have a user-only write path (the MCP preferences tool exposes an
+allowlist that excludes this key), and the endpoint reads them per request. A
+thread field would need its own command, decider branch, projection handling,
+and client plumbing on web and mobile for the same guarantee. The setting does
+not follow a fork or show in thread history; grant a fork separately.
 
 ## Policy And Idempotency
 
@@ -466,11 +481,15 @@ tools, and thread launch keep the caller's project.
   the user granted the caller [cross-project orchestration](#cross-project-orchestration).
   Send and the other thread mutations additionally enforce the same runtime and
   interaction privilege ceiling as child creation, with or without the grant.
-- A thread that settles itself with `t3_thread_organize` while its turn runs
-  settles when that run ends; the result carries `settlesWhenRunEnds: true`.
-  Settling rejects a thread with an active run, and a caller's own thread is
-  always mid-run. The deferred settle is held in memory, so a server restart
-  before the run ends drops it.
+- `t3_thread_organize` with `settle` on a thread whose turn is running,
+  including the caller itself, settles it when that run ends; the result
+  carries `settlesWhenRunEnds: true`. It dispatches `thread.settle` with
+  `whenIdle`, which records `settleRequestedAt` on the thread instead of
+  failing the active-run guard. The orchestrator applies it when a run ends and
+  again during startup recovery, so a restart does not drop it. A new user or
+  agent message cancels the request; automatic notifications and delegated
+  completions do not. Clients that send `thread.settle` without `whenIdle`
+  keep the old rejection.
 - Provider instances must be enabled, installed, available, authenticated, and
   backed by a V2 adapter.
 - A requested model must be advertised by the selected provider when the
