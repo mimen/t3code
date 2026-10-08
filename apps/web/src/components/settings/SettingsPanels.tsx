@@ -615,6 +615,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.composerRichTextEnabled !== DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled
         ? ["Rich text composer"]
         : []),
+      ...(settings.claudeResumeCompactionEnabled !==
+      DEFAULT_UNIFIED_SETTINGS.claudeResumeCompactionEnabled
+        ? ["Compact old Claude threads"]
+        : []),
       ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
       ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
         ? ["Follow-up behavior"]
@@ -681,6 +685,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadUnpin,
       settings.composerCollapseOnScroll,
       settings.composerRichTextEnabled,
+      settings.claudeResumeCompactionEnabled,
       settings.sendShortcut,
       settings.followUpBehavior,
       settings.addProjectBaseDirectory,
@@ -803,6 +808,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
+      claudeResumeCompactionEnabled: DEFAULT_UNIFIED_SETTINGS.claudeResumeCompactionEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
@@ -2787,6 +2793,34 @@ export function GeneralSettingsPanel() {
                 updateSettings({ composerCollapseOnScroll: Boolean(checked) })
               }
               aria-label="Collapse composer on scroll"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("claude-resume-compaction")}
+          description="When a Claude thread over 100k tokens has been idle for 70 minutes, the send button compacts first. Off sends with full history."
+          resetAction={
+            settings.claudeResumeCompactionEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.claudeResumeCompactionEnabled ? (
+              <SettingResetButton
+                label="compact old Claude threads"
+                onClick={() =>
+                  updateSettings({
+                    claudeResumeCompactionEnabled:
+                      DEFAULT_UNIFIED_SETTINGS.claudeResumeCompactionEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.claudeResumeCompactionEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ claudeResumeCompactionEnabled: Boolean(checked) })
+              }
+              aria-label="Compact old Claude threads"
             />
           }
         />

@@ -646,6 +646,19 @@ describe("ClientSettings sidebar", () => {
   });
 });
 
+describe("ClientSettings Claude resume compaction", () => {
+  it("defaults on and preserves an explicit opt-out", () => {
+    expect(decodeClientSettings({}).claudeResumeCompactionEnabled).toBe(true);
+    expect(
+      decodeClientSettings({ claudeResumeCompactionEnabled: false }).claudeResumeCompactionEnabled,
+    ).toBe(false);
+    expect(
+      decodeClientSettingsPatch({ claudeResumeCompactionEnabled: false })
+        .claudeResumeCompactionEnabled,
+    ).toBe(false);
+  });
+});
+
 describe("ClientSettings context window meter", () => {
   it("defaults off and preserves an explicit legacy opt-in", () => {
     expect(decodeClientSettings({}).contextWindowMeterEnabled).toBe(false);
