@@ -61,7 +61,8 @@ fi
 /usr/bin/grep -qF 'createHash("sha256")' "$integrity"
 /usr/bin/grep -qF 'claude-gpt provider requires a pinned Claude CLI SHA-256' "$integrity"
 /usr/bin/grep -qF 'http://127.0.0.1:8317' "$provider"
-/usr/bin/grep -qF 'iconKey: "openai"' "$provider"
+/usr/bin/grep -qF 'CLAUDE_GPT_INSTANCE_ID = ProviderInstanceId.make("claude-gpt")' "$provider"
+/usr/bin/grep -qF 'CLAUDE_GPT_INSTANCE_ID = "claude-gpt"' "$integrity"
 for model in gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna gpt-5.5; do
   /usr/bin/grep -qF -- "$model" "$provider"
 done
