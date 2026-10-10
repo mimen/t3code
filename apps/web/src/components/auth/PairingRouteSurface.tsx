@@ -47,11 +47,9 @@ export function PairingRouteSurface({
   initialErrorMessage?: string;
   onAuthenticated: () => void;
 }) {
-  const autoPairTokenRef = useRef<string | null>(peekPairingTokenFromUrl());
-  const [credential, setCredential] = useState(() => autoPairTokenRef.current ?? "");
+  const [credential, setCredential] = useState(() => peekPairingTokenFromUrl() ?? "");
   const [errorMessage, setErrorMessage] = useState(initialErrorMessage ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const autoSubmitAttemptedRef = useRef(false);
 
   const submitCredential = useCallback(
     async (nextCredential: string) => {
@@ -86,14 +84,19 @@ export function PairingRouteSurface({
   );
 
   useEffect(() => {
-    const token = autoPairTokenRef.current;
-    if (!token || autoSubmitAttemptedRef.current) {
-      return;
-    }
-
-    autoSubmitAttemptedRef.current = true;
-    stripPairingTokenFromUrl();
-    void submitCredential(token);
+    // A pairing link opened in a tab already on /pair changes only the hash, so the route never remounts.
+    const submitTokenFromUrl = () => {
+      const token = peekPairingTokenFromUrl();
+      if (!token) {
+        return;
+      }
+      stripPairingTokenFromUrl();
+      setCredential(token);
+      void submitCredential(token);
+    };
+    submitTokenFromUrl();
+    window.addEventListener("hashchange", submitTokenFromUrl);
+    return () => window.removeEventListener("hashchange", submitTokenFromUrl);
   }, [submitCredential]);
 
   return (
