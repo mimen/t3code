@@ -13,12 +13,12 @@ Milad's maintained fork. Upstream changes merge in by tag (`sync_tags`), one tag
 
 | Feature | Fork-owned code | Smoke test |
 |---|---|---|
-| Claude Code session import | `apps/server/src/claudeSessions/`, `apps/server/src/cli/sessionImport.ts`, web and mobile `claude-sessions` surfaces | `scripts/fork/smoke/` |
-| Fork migrations | `apps/server/src/fork/`, own tracking table `fork_sql_migrations` | `scripts/fork/smoke/` |
-| Custom model controls | `apps/server/src/provider/Layers/ClaudeModelCatalog.ts`, `ProviderInstanceIconPicker.tsx` | `scripts/fork/smoke/` |
-| Desktop remote-only mode | `apps/desktop/src/ipc/methods/executionMode.ts`, `apps/web/src/desktopRuntimeCapabilities.ts` | `scripts/fork/smoke/` |
-| Filtered Sidebar V2 default | settings default in `packages/contracts/src/settings.ts` | `scripts/fork/smoke/` |
-| Desktop identity | `scripts/fork/` and the desktop identity module | `scripts/fork/smoke/` |
+| Claude Code session import | `apps/server/src/claudeSessions/`, `apps/server/src/cli/sessionImport.ts`, web and mobile `claude-sessions` surfaces | see `scripts/fork/check.sh` |
+| Fork migrations | `apps/server/src/fork/migrations/`, own tracking table `fork_sql_migrations` | see `scripts/fork/check.sh` |
+| Custom model controls | `apps/server/src/provider/Layers/ClaudeModelCatalog.ts`, `ProviderInstanceIconPicker.tsx` | see `scripts/fork/check.sh` |
+| Desktop remote-only mode | `apps/desktop/src/ipc/methods/executionMode.ts`, `apps/web/src/desktopRuntimeCapabilities.ts` | see `scripts/fork/check.sh` |
+| Filtered Sidebar V2 default | settings default in `packages/contracts/src/settings.ts` | see `scripts/fork/check.sh` |
+| Desktop identity | `scripts/fork/` and the desktop identity module | see `scripts/fork/check.sh` |
 
 ## Upstream paths the fork edits
 
@@ -65,7 +65,6 @@ Milad's maintained fork. Upstream changes merge in by tag (`sync_tags`), one tag
 | `apps/server/src/orchestration/projector.ts` | session import: Claude Code sessions imported and continued as T3 threads |
 | `apps/server/src/persistence/Layers/ProjectionThreadActivities.ts` | session import: Claude Code sessions imported and continued as T3 threads |
 | `apps/server/src/persistence/Layers/ProjectionThreadMessages.ts` | session import: Claude Code sessions imported and continued as T3 threads |
-| `apps/server/src/persistence/Migrations.ts` | fork migrations: one hook line runs the fork Migrator after upstream's |
 | `apps/server/src/persistence/Services/ProjectionThreadActivities.ts` | session import: Claude Code sessions imported and continued as T3 threads |
 | `apps/server/src/persistence/Services/ProjectionThreadMessages.ts` | session import: Claude Code sessions imported and continued as T3 threads |
 | `apps/server/src/project/ProjectSetupScriptRunner.test.ts` | session import: Claude Code sessions imported and continued as T3 threads |
@@ -142,3 +141,4 @@ Milad's maintained fork. Upstream changes merge in by tag (`sync_tags`), one tag
 | `packages/contracts/src/server.ts` | model controls: custom Claude model catalog, per-instance icons, and model picker metadata |
 | `packages/contracts/src/settings.test.ts` | filtered Sidebar V2 default and custom model profile settings |
 | `packages/contracts/src/settings.ts` | filtered Sidebar V2 default and custom model profile settings |
+| `apps/server/src/persistence/Layers/Sqlite.ts` | fork migrations: hook runs the fork Migrator (`fork_sql_migrations`) after upstream's |

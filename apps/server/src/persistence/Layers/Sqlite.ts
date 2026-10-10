@@ -6,6 +6,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import { runMigrations } from "../Migrations.ts";
+import { runForkMigrations } from "../../fork/migrations/ForkMigrations.ts"; // fork: migrations
 import { ServerConfig } from "../../config.ts";
 
 type RuntimeSqliteLayerConfig = {
@@ -36,6 +37,7 @@ const setup = Layer.effectDiscard(
     yield* sql`PRAGMA journal_mode = WAL;`;
     yield* sql`PRAGMA foreign_keys = ON;`;
     yield* runMigrations();
+    yield* runForkMigrations(); // fork: migrations
   }),
 );
 
