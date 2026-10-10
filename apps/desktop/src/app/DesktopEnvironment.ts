@@ -17,6 +17,7 @@ import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
+import { FORK_IDENTITY } from "../fork/identity.ts";
 
 export interface MakeDesktopEnvironmentInput {
   readonly dirname: string;
@@ -114,7 +115,8 @@ export function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName:
+      stageLabel === "Nightly" ? FORK_IDENTITY.productName : `${APP_BASE_NAME} (${stageLabel})`, // fork: identity
   };
 }
 
