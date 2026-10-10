@@ -6,6 +6,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
+import * as ForkOneShotSettleReactor from "./orchestration-v2/ForkOneShotSettleReactor.ts"; // fork: one-shot
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
 
@@ -571,6 +572,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     Layer.provide(layerPullRequestService),
     Layer.provide(ProjectionStoreV2.layer),
   ),
+  // fork: one-shot
+  Layer.effectDiscard(
+    ForkOneShotSettleReactor.ForkOneShotSettleReactor.pipe(
+      Effect.flatMap((service) => service.start()),
+    ),
+  ).pipe(Layer.provide(ForkOneShotSettleReactor.layer), Layer.provide(ProjectionStoreV2.layer)),
   // Subscribes to `account.rate-limits.updated` so usage bars track live
   // telemetry instead of waiting for the next status probe.
   ProviderUsageLimitsIngestion.layer,

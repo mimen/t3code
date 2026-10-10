@@ -26,3 +26,6 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `apps/desktop/src/app/DesktopEarlyElectronStartup.test.ts` | expects the fork's state directory |
 | `apps/desktop/src/app/DesktopPreReadyFileSystem.test.ts` | expects the fork's profile directory |
 | `apps/desktop/src/window/DesktopApplicationMenu.test.ts` | expects the fork's name in the menu |
+| `packages/shared/package.json` | one-shot: `./forkOneShot` subpath export |
+| `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | one-shot: prepends the hidden instruction to the provider text |
+| `apps/server/src/server.ts` | one-shot: starts `ForkOneShotSettleReactor` |
