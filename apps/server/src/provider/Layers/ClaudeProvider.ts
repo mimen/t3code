@@ -1,6 +1,5 @@
 import {
   type ClaudeSettings,
-  ProviderInstanceId,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -26,7 +25,6 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
-import { verifyClaudeBinaryIntegrity } from "../Drivers/ClaudeBinaryIntegrity.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { makeClaudeModelCatalog, type ClaudeModelCatalog } from "./ClaudeModelCatalog.ts";
@@ -294,13 +292,11 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
  */
 const probeClaudeCapabilities = (
   claudeSettings: ClaudeSettings,
-  instanceId: ProviderInstanceId,
   environment?: NodeJS.ProcessEnv,
   cwd?: string,
 ) => {
   const abort = new AbortController();
   return Effect.gen(function* () {
-    yield* verifyClaudeBinaryIntegrity({ instanceId, settings: claudeSettings });
     const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
     const executablePath = yield* resolveClaudeSdkExecutablePath(
       claudeSettings.binaryPath,
@@ -355,11 +351,9 @@ const probeClaudeCapabilities = (
 
 const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   claudeSettings: ClaudeSettings,
-  instanceId: ProviderInstanceId,
   args: ReadonlyArray<string>,
   environment?: NodeJS.ProcessEnv,
 ) {
-  yield* verifyClaudeBinaryIntegrity({ instanceId, settings: claudeSettings });
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
   const spawnCommand = yield* resolveSpawnCommand(claudeSettings.binaryPath, args, {
     env: claudeEnvironment,
@@ -378,7 +372,6 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
   environment?: NodeJS.ProcessEnv,
   catalog: ClaudeModelCatalog = makeClaudeModelCatalog(claudeSettings),
-  instanceId: ProviderInstanceId = ProviderInstanceId.make("claude"),
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -406,7 +399,6 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   const versionProbe = yield* runClaudeCommand(
     claudeSettings,
-    instanceId,
     ["--version"],
     resolvedEnvironment,
   ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);

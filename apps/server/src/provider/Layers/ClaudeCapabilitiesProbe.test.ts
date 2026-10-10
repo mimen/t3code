@@ -1,4 +1,4 @@
-import { ClaudeSettings, ProviderInstanceId } from "@t3tools/contracts";
+import { ClaudeSettings } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -97,7 +97,6 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
 
       const capabilities = yield* probeClaudeCapabilities(
         decodeClaudeSettings({ binaryPath: executablePath }),
-        ProviderInstanceId.make("claudeAgent"),
         {
           ...process.env,
           T3_PROBE_INVOCATION_PATH: invocationPath,

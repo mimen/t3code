@@ -9,16 +9,15 @@ Milad's private fork of T3 Code, a web GUI for coding agents. A Node.js WebSocke
 wraps provider CLIs (Codex app-server over JSON-RPC on stdio, plus Claude, Cursor, and
 OpenCode) and serves a React app that renders sessions, threads, and diffs. Upstream ships
 as an npm CLI (`t3`), an Electron desktop app, an Expo mobile app, a hosted Vercel web app,
-and a Cloudflare Worker control plane. This fork adds a self-hosted alpha server on the Mac
-Mini, Claude Code session import, and a gateway provider that routes every Claude and GPT
-model through one instance.
+and a Cloudflare Worker control plane. This fork adds Claude Code session import, custom
+model controls, a desktop remote-only mode, and its own desktop build, "T3 Code (Fork)".
+`FORK.md` lists the fork's features and every upstream file it edits.
 
 ## Components
 
-Seven independently operated components, plus a non-independent shared-library and tooling
-group. The prior inventory counted five, most likely the five directories under `apps/`.
-That misses `infra/relay`, which has its own deploy workflow and its own database, and
-`ops/mini-fork-alpha`, which is local to this fork and has no upstream counterpart.
+Six independently operated components, plus a non-independent shared-library and tooling
+group. `infra/relay` counts as its own component because it has its own deploy workflow and
+its own database.
 
 | Component | Path | What it is | Surfaces | Stack |
 |---|---|---|---|---|
@@ -28,30 +27,19 @@ That misses `infra/relay`, which has its own deploy workflow and its own databas
 | `apps/mobile` (`@t3tools/mobile`) | `apps/mobile/` | Expo React Native app for iOS and Android. Not yet distributed. Ships via EAS preview and production. | mobile | ts, swift, kotlin, react-native, tailwind, expo, sqlite, node |
 | `apps/marketing` (`@t3tools/marketing`) | `apps/marketing/` | Astro static product site. No in-repo deploy target found. | web | ts, astro, node, vercel |
 | `infra/relay` (`t3code-relay`) | `infra/relay/` | The T3 Connect control plane. Cloudflare Worker deployed by Alchemy, backed by PlanetScale Postgres, links environments and registers mobile devices. | api, backend-data | ts, effect, postgres, cloudflare-workers |
-| `ops/mini-fork-alpha` | `ops/mini-fork-alpha/` | Local only. Versioned deployment contract that runs the fork's own server build on the Mac Mini and keeps it healthy. | cli-tui, resident, configuration | shell, node, launchd |
 
 `packages/*`, `oxlint-plugin-t3code`, and `scripts` are the shared-library and tooling
-group, consumed by the seven above and not operated on their own. `docs/`, `.plans/`, and
+group, consumed by the six above and not operated on their own. `docs/`, `.plans/`, and
 the vendored `.repos/` subtrees ship no operation and are not components.
 
 ## Fork boundary
 
 This is the load-bearing fact, because it governs who can change what. `origin` is
 `mimen/t3code`, `upstream` is `pingdotgg/t3code`, and upstream does not accept
-contributions. The divergence is therefore permanent, and the periodic upstream merge is
-the real maintenance operation. It is currently about 1761 commits overdue against a
-196-file local delta, which makes it the single largest foreseeable piece of work here.
-
-Local to this fork:
-
-- All of `ops/mini-fork-alpha/`.
-- `.github/workflows/mini-fork-alpha-eligibility.yml`, the eligibility gate that signs and publishes the Mini's deploy-eligible ref.
-- A 16-line "Fork Desktop Launch Guardrail" block at the top of `AGENTS.md`. The rest of that file is upstream.
-- Feature work inside upstream components: `apps/server/src/claudeSessions/`, the `sessionImport` and `mini` CLIs, the `claudeGptProvider` and `ClaudeBinaryIntegrity` server modules, persistence migrations 034-037, and edits across `apps/web`, `apps/mobile`, `apps/desktop`, `packages/contracts`, and `packages/client-runtime`.
-
-Everything else is upstream, including `README.md`, all of `docs/`, every workflow except
-the eligibility one, and all of `infra/relay/`. A change to any of those is a change to code
-the next upstream merge will overwrite.
+contributions. The divergence is permanent, and the upstream merge is the real maintenance
+operation. It follows the `fork` skill: merge each tracked upstream nightly tag, keep fork
+code in fork-owned files, and list every upstream file the fork edits in `FORK.md`, which
+`fork-lint` enforces. `scripts/fork/check.sh` is the landing gate.
 
 ## How they relate
 
@@ -63,15 +51,13 @@ flowchart LR
   M["apps/mobile"] -->|HTTP| S
   W -.->|T3 Connect link| R["infra/relay"]
   M -.->|T3 Connect link, APNs| R
-  MFA["ops/mini-fork-alpha"] -->|deploys build of| S
 ```
 
 The server is the hub. It wraps the provider binaries and serves the web client, the
 desktop shell spawns its own copy of it, and the mobile app reaches it over HTTP. The relay
 is a control plane, not a data path. It links a client to a remote environment (a running
 server on a user's machine), and after the link is made traffic goes directly between the
-two. `ops/mini-fork-alpha` operates the server, deploying immutable release checkouts of the
-fork's build to the Mini and swapping the active one by symlink.
+two.
 
 ## What the components share
 
@@ -92,20 +78,19 @@ WebSocket protocol that the clients and server both speak.
 
 ## Repo-level gaps
 
-**The fork inherited upstream workflows that act on the outside world.** `deploy-relay.yml`
-deploys the production Cloudflare and PlanetScale stack on every push to `main`, and
-`release.yml` runs a three-hourly cron that publishes the npm package `t3`. Whether either
-actually runs on `mimen/t3code` depends on whether Actions is enabled and whether GitHub
-treats the repo as a fork, which was not checked. Treat this as unverified. Resolve with
-`gh api repos/mimen/t3code --jq '.fork'` and `gh run list -R mimen/t3code`.
+**Inherited upstream workflows stay disabled.** `deploy-relay.yml` would deploy the
+production Cloudflare and PlanetScale stack and `release.yml` would publish the npm package
+`t3`. GitHub Actions is disabled on `mimen/t3code` on purpose, so none of them run. The fork
+keeps the files rather than deleting them, because a deleted upstream file conflicts on
+every sync.
 
-**No root index of components and deployment targets.** Four good component runbooks exist
-(`docs/operations/release.md`, `infra/relay/README.md`, `ops/mini-fork-alpha/README.md`,
-`apps/mobile/README.md`) but three are reachable only by guessing the directory. The README
+**No root index of components and deployment targets.** Three good component runbooks exist
+(`docs/operations/release.md`, `infra/relay/README.md`, `apps/mobile/README.md`), but two
+are reachable only by guessing the directory. The README
 never says this is a fork, and `docs/getting-started/quick-start.md` still tells a new
 developer to run `bun run dev`, which the Vite+ toolchain no longer supports.
 
 **No ADRs and no process identity.** Decisions like the event-sourced model and Vite+ over
 pnpm have no recorded rationale outside `.plans/`. No resident process sets an `<app>:<role>`
-argv name, so the Mini server, four worktree servers, and a desktop-spawned backend all
+argv name, so worktree servers and a desktop-spawned backend all
 appear as anonymous `node` in `ps`.

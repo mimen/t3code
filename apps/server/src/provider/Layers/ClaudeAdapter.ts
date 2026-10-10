@@ -70,7 +70,6 @@ import * as Stream from "effect/Stream";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
-import { verifyClaudeBinaryIntegrity } from "../Drivers/ClaudeBinaryIntegrity.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { makeClaudeModelCatalog, type ClaudeModelCatalog } from "./ClaudeModelCatalog.ts";
@@ -3468,20 +3467,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const canUseTool: CanUseTool = (toolName, toolInput, callbackOptions) =>
         runPromise(canUseToolEffect(toolName, toolInput, callbackOptions));
 
-      yield* verifyClaudeBinaryIntegrity({
-        instanceId: boundInstanceId,
-        settings: claudeSettings,
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderAdapterProcessError({
-              provider: PROVIDER,
-              threadId,
-              detail: "Configured Claude CLI integrity verification failed.",
-              cause,
-            }),
-        ),
-      );
       const claudeBinaryPath = claudeSdkExecutablePath;
       const extraArgs = parseCliArgs(claudeSettings.launchArgs).flags;
       const modelSelection =

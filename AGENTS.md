@@ -1,20 +1,13 @@
 # AGENTS.md
 
-## Fork Desktop Launch Guardrail
+## Fork
 
-This checkout is Milad's fork. The only canonical desktop app for normal use and user-visible verification is:
+This checkout is Milad's fork of `pingdotgg/t3code`. Read `FORK.md` (upstream, sync tags, the check command, every upstream path the fork touches) and follow the `fork` skill before changing code or merging upstream.
 
-```text
-/Applications/T3 Code (Fork Alpha).app
-```
+- Fork features live in fork-owned files; upstream files get only small hooks marked `fork: <feature>`, each listed in `FORK.md`.
+- Agents and subagents must not launch desktop apps or dev servers unless the assignment explicitly requires it.
 
-- **Never launch** `apps/desktop/scripts/start-electron.mjs`, `.electron-runtime/T3 Code (Dev).app`, or any app named `T3 Code (Dev)` unless Milad explicitly asks for a source/dev run.
-- **Never activate by generic app name** (`open -a "T3 Code (Alpha)"` or AppleScript by name). A separate upstream/legacy app exists at `/Applications/T3 Code (Alpha).app` and does not contain this fork's changes.
-- Use the full Fork Alpha path above for opening/activating. Before reporting an app launch as complete, verify its process path begins with `/Applications/T3 Code (Fork Alpha).app`.
-- Subagents must not launch desktop applications or dev servers unless their assignment explicitly requires it. The primary agent owns packaged-app launch and end-to-end validation.
-- Fork artifact source: `release/local-alpha-icons/T3-Code-0.0.28-arm64.dmg`. Do not overwrite the legacy `/Applications/T3 Code (Alpha).app`; rebuild and update the separately named Fork Alpha app only with explicit scope.
-
-`CLAUDE.md` is a symlink to this file, so these guardrails apply to Claude sessions and subagents opened from this repository.
+`CLAUDE.md` is a symlink to this file.
 
 ## Task Completion Requirements
 
