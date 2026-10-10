@@ -29,3 +29,7 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `packages/shared/package.json` | one-shot: `./forkOneShot` subpath export |
 | `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | one-shot: prepends the hidden instruction to the provider text |
 | `apps/server/src/server.ts` | one-shot: starts `ForkOneShotSettleReactor` |
+| `packages/contracts/src/orchestratorMcp.ts` | one-shot: `settleWhenDone` on `create_threads` entries |
+| `apps/server/src/mcp/OrchestratorMcpService.ts` | one-shot: `create_threads` attaches the record |
+| `apps/server/src/mcp/toolkits/project/tools.ts` | one-shot: `settleWhenDone` on `t3_thread_launch` |
+| `apps/server/src/mcp/toolkits/project/handlers.ts` | one-shot: `t3_thread_launch` attaches the record |

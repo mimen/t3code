@@ -58,6 +58,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
+import { withOneShotContext } from "@t3tools/shared/forkOneShot"; // fork: one-shot
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -2184,6 +2185,8 @@ const make = Effect.gen(function* () {
                     }),
                     text: request.prompt,
                     attachments: [],
+                    // fork: one-shot
+                    ...(request.settleWhenDone ? { context: withOneShotContext(undefined) } : {}),
                     modelSelection: target.modelSelection,
                     dispatchMode: { type: "start_immediately" },
                   })

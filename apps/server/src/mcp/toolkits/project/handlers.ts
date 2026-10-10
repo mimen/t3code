@@ -1,4 +1,5 @@
 import { MessageId, ThreadId, OrchestratorMcpFailure, ProjectId } from "@t3tools/contracts";
+import { withOneShotContext } from "@t3tools/shared/forkOneShot"; // fork: one-shot
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -131,6 +132,8 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                   ...(caller === undefined ? {} : { senderThreadId: caller.id }),
                   text: input.message ?? "",
                   attachments,
+                  // fork: one-shot
+                  ...(input.settleWhenDone ? { context: withOneShotContext(undefined) } : {}),
                 },
               }),
           createdBy: "agent",

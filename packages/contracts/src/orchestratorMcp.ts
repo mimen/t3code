@@ -237,6 +237,13 @@ export const OrchestratorMcpCreateThreadRequest = Schema.Struct({
   target: Schema.optional(OrchestratorMcpTarget),
   runtimeMode: Schema.optional(OrchestratorMcpRuntimeMode),
   interactionMode: Schema.optional(OrchestratorMcpInteractionMode),
+  // fork: one-shot
+  settleWhenDone: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "One-shot: tell the agent no follow-ups will come and settle the thread when its first run completes.",
+    }),
+  ),
 });
 export type OrchestratorMcpCreateThreadRequest = typeof OrchestratorMcpCreateThreadRequest.Type;
 

@@ -129,6 +129,13 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
       }),
     ),
     attachments: Schema.optional(Schema.Array(McpAttachmentInput).check(Schema.isMaxLength(8))),
+    // fork: one-shot
+    settleWhenDone: Schema.optional(
+      Schema.Boolean.annotate({
+        description:
+          "One-shot: tell the agent no follow-ups will come and settle the thread when its first run completes. Needs a message.",
+      }),
+    ),
   }),
   success: Schema.Struct({
     threadId: ThreadId,
