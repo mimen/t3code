@@ -6,5 +6,5 @@ vp install
 vp run typecheck
 vp lint --report-unused-disable-directives
 # Upstream's cross-architecture Windows probe test fails on macOS hosts at the base tag too.
-vp test run apps/desktop/src scripts/build-desktop-artifact.test.ts \
+vp test run apps/desktop/src scripts/build-desktop-artifact.test.ts scripts/lib \
   -t '^(?!.*skips the primary native probe for cross-architecture Windows payloads)'

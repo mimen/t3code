@@ -23,7 +23,7 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import gnomeCaptureBundle from "../apps/desktop/gnome-extension/bundle.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
-import { FORK_IDENTITY } from "../apps/desktop/src/fork/identity.ts";
+import { FORK_IDENTITY } from "./lib/fork-identity.ts";
 
 import { applyWebBrandAssets } from "./apply-web-brand-assets.ts";
 import {

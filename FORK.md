@@ -25,3 +25,4 @@ The desktop app ships as "T3 Code (Fork)": its own bundle id, profile, `~/.t3-fo
 | `apps/desktop/src/app/DesktopClerk.test.ts` | expects the fork's profile directory |
 | `apps/desktop/src/app/DesktopEarlyElectronStartup.test.ts` | expects the fork's state directory |
 | `apps/desktop/src/app/DesktopPreReadyFileSystem.test.ts` | expects the fork's profile directory |
+| `apps/desktop/src/window/DesktopApplicationMenu.test.ts` | expects the fork's name in the menu |

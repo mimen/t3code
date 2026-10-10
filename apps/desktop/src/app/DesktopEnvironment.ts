@@ -17,7 +17,7 @@ import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
-import { FORK_IDENTITY } from "../fork/identity.ts";
+import { FORK_IDENTITY } from "../../../../scripts/lib/fork-identity.ts";
 
 export interface MakeDesktopEnvironmentInput {
   readonly dirname: string;

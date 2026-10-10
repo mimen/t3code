@@ -1,5 +1,5 @@
 import * as Option from "effect/Option";
-import { FORK_IDENTITY } from "../fork/identity.ts";
+import { FORK_IDENTITY } from "../../../../scripts/lib/fork-identity.ts";
 
 export type JoinPath = (first: string, ...segments: string[]) => string;
 
