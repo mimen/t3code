@@ -269,6 +269,7 @@ import {
 } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { ForkOneShotMenuItem, ForkOneShotToggle } from "./ForkOneShotToggle"; // fork: one-shot
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
@@ -5495,6 +5496,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         />
       ),
     },
+    // fork: one-shot
+    ...(routeKind === "draft" && draftId
+      ? [
+          {
+            id: "one-shot",
+            content: (
+              <ForkOneShotToggle draftId={draftId} size={composerControlsCollapsed ? "xs" : "sm"} />
+            ),
+          },
+        ]
+      : []),
   ];
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
@@ -5658,6 +5670,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             }
             onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
+            // fork: one-shot
+            forkOneShotItem={
+              hiddenRestingBlockIds.includes("one-shot") ? (
+                <ForkOneShotMenuItem draftId={draftId} />
+              ) : undefined
+            }
           />
         </div>
       </>

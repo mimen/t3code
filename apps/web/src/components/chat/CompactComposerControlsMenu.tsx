@@ -31,6 +31,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
+  forkOneShotItem?: ReactNode; // fork: one-shot
 }) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const size = props.size ?? "sm";
@@ -89,6 +90,13 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
+        {/* fork: one-shot */}
+        {props.forkOneShotItem ? (
+          <>
+            <MenuDivider />
+            {props.forkOneShotItem}
+          </>
+        ) : null}
       </MenuPopup>
     </Menu>
   );
