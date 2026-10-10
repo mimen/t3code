@@ -9,7 +9,7 @@ release: scripts/fork/release.sh
 
 Milad's fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code), rebuilt from upstream `v0.0.46-nightly.20261010.2908` on 2026-10-10. The pre-reset fork is archived on the `archive/fork-pre-reset-2026-10-10` branch.
 
-The desktop app ships as "T3 Code (Fork)": its own bundle id, profile, `~/.t3-fork` state directory, and update feed (prereleases on mimen/t3code, built and signed on the Mac Mini by `scripts/fork/release.sh`). The nightly hub Updates job merges each new upstream nightly tag and releases. Rules for changing anything here: the `fork` skill.
+Releases are built from `main` on the Mac Mini; installed fork apps pick them up through the in-app update button. The desktop app ships as "T3 Code (Fork)": its own bundle id, profile, `~/.t3-fork` state directory, and update feed (prereleases on mimen/t3code, built and signed on the Mac Mini by `scripts/fork/release.sh`). The nightly hub Updates job merges each new upstream nightly tag and releases. Rules for changing anything here: the `fork` skill.
 
 | Path | Why |
 |---|---|
