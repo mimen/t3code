@@ -2,20 +2,21 @@ import { OrchestrationMessageContext } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { projectComposerContextForProvider } from "./composerContextReferences";
+import { projectComposerContextForProvider } from "./composerContextReferences.ts";
 import {
   ONE_SHOT_INSTRUCTION,
   messageIsOneShot,
   withOneShotContext,
   withOneShotInstruction,
-} from "./forkOneShot";
+} from "./forkOneShot.ts";
+
+const encodeContext = Schema.encodeSync(OrchestrationMessageContext);
+const decodeContext = Schema.decodeUnknownSync(OrchestrationMessageContext);
 
 describe("forkOneShot", () => {
   it("survives the message context wire schema", () => {
-    const encoded = Schema.encodeSync(OrchestrationMessageContext)(withOneShotContext(undefined));
-    const decoded = Schema.decodeUnknownSync(OrchestrationMessageContext)(
-      JSON.parse(JSON.stringify(encoded)),
-    );
+    const encoded = encodeContext(withOneShotContext(undefined));
+    const decoded = decodeContext(JSON.parse(JSON.stringify(encoded)));
     expect(messageIsOneShot(decoded)).toBe(true);
   });
 

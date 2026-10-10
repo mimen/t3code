@@ -12,13 +12,13 @@ import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
-const ACTIVE_RUN_STATUSES: ReadonlyArray<OrchestrationV2Run["status"]> = [
+const ACTIVE_RUN_STATUSES: ReadonlySet<OrchestrationV2Run["status"]> = new Set([
   "preparing",
   "queued",
   "starting",
   "running",
   "waiting",
-];
+]);
 
 /** Fork: settles a one-shot thread when the run its one-shot message started completes cleanly. */
 export class ForkOneShotSettleReactor extends Context.Service<
@@ -45,7 +45,7 @@ const make = Effect.gen(function* () {
       // A pinned thread is one the user is keeping in view; settling would unpin it.
       if (thread.archivedAt !== null || thread.pinnedAt != null) return;
       if (thread.settledOverride === "settled") return;
-      if (runs.some((run) => ACTIVE_RUN_STATUSES.includes(run.status))) return;
+      if (runs.some((run) => ACTIVE_RUN_STATUSES.has(run.status))) return;
       if (runtimeRequests.some((request) => request.status === "pending")) return;
       yield* orchestrator.dispatch({
         type: "thread.settle",
