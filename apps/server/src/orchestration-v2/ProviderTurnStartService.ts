@@ -43,6 +43,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import { withUserDevice } from "@t3tools/provider-core/server/runtimeInstructions";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import {
@@ -950,10 +951,13 @@ export const layer: Layer.Layer<
       );
       // fork: one-shot
       const userText = withOneShotInstruction(
-        projectComposerContextForProvider({
-          text: message.text,
-          records: message.context?.records ?? [],
-        }),
+        withUserDevice(
+          projectComposerContextForProvider({
+            text: message.text,
+            records: message.context?.records ?? [],
+          }),
+          message.sender,
+        ),
         message.context,
       );
       // Delivered once: this run's provider turn marks the work as told. A

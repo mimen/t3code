@@ -41,6 +41,7 @@ import {
   type FileManagerRevealKind,
   type OrchestrationClientOrigin,
   type OrchestrationV2Command,
+  type OrchestrationV2MessageSender,
   type GitActionProgressEvent,
   type GitManagerServiceError,
   type MessageId,
@@ -213,6 +214,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as DefectReporter from "./observability/DefectReporter.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import { resolveMessageSender } from "./auth/messageSender.ts";
 import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
 import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
@@ -1184,6 +1186,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
 const layerWsRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
+  messageSender: OrchestrationV2MessageSender,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
@@ -1844,6 +1847,7 @@ const layerWsRpc = (
                           createdBy: "user",
                           creationSource:
                             "creationSource" in command ? command.creationSource : "web",
+                          sender: messageSender,
                         }),
                       )
                   ).pipe(Effect.provide(intakeContext)),
@@ -1982,6 +1986,7 @@ const layerWsRpc = (
                             ...(input.initialMessage.context === undefined
                               ? {}
                               : { context: input.initialMessage.context }),
+                            sender: messageSender,
                           },
                         }),
                     createdBy: "user",
@@ -3171,6 +3176,11 @@ export const layer = Layer.unwrap(
         );
         const clientOrigin = readClientConnectionOrigin(request);
         const clientAnalyticsProps = readClientAnalyticsProps(request);
+        const messageSender = yield* resolveMessageSender(
+          request,
+          session.client,
+          clientOrigin.surface,
+        );
         yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
         yield* analytics.record("client.connected", clientAnalyticsProps);
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
@@ -3189,6 +3199,7 @@ export const layer = Layer.unwrap(
             layerWsRpc(
               session,
               clientOrigin,
+              messageSender,
               clientAnalyticsProps,
               previewAutomationBroker,
               serverBrowser,
