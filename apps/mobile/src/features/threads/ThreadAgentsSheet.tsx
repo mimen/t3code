@@ -9,6 +9,7 @@ import {
 import { deriveSubagentElapsedMs, formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import * as DateTime from "effect/DateTime";
+import { Atom } from "effect/reactivity";
 import * as Haptics from "expo-haptics";
 import { useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
@@ -28,8 +29,16 @@ const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Pl
 
 type AgentsTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 
-export function useThreadTurnSubagents(target: AgentsTarget): ThreadTurnSubagents | null {
-  return useAtomValue(environmentThreadDetails.turnSubagentsAtom(target));
+const EMPTY_TURN_SUBAGENTS_ATOM = Atom.make<ThreadTurnSubagents | null>(null).pipe(
+  Atom.withLabel("mobile-thread-turn-subagents:empty"),
+);
+
+export function useThreadTurnSubagents(target: AgentsTarget | null): ThreadTurnSubagents | null {
+  return useAtomValue(
+    target === null
+      ? EMPTY_TURN_SUBAGENTS_ATOM
+      : environmentThreadDetails.turnSubagentsAtom(target),
+  );
 }
 
 export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
@@ -56,6 +65,7 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
 
   const content = (
     <ScrollView
+      nestedScrollEnabled
       className="flex-1"
       // The iOS header is translucent and floats over this view; UIKit has to
       // inset the content or the first row sits underneath the title.

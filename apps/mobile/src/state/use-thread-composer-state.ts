@@ -3,6 +3,7 @@ import { readEnvironmentScope } from "./session";
 import type { ComposerTextPaste } from "../native/T3ComposerEditor.types";
 import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
+import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
 import {
   deriveProviderSubagentStatus,
   deriveRunlessWorkStartedAt,
@@ -39,7 +40,10 @@ import { composerContextSendBlockReason, reidentifyComposerContext } from "../li
 import { uuidv4 } from "../lib/uuid";
 
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
-import { isModelSelectionUnavailable } from "../lib/modelOptions";
+import {
+  describeUnavailableModelSelection,
+  isModelSelectionUnavailable,
+} from "../lib/modelOptions";
 import { resolveProviderInteractionMode } from "./legacy-plan-mode";
 import {
   convertPastedImagesToAttachments,
@@ -180,6 +184,7 @@ export function useThreadComposerState() {
   const {
     selectedThread: selectedThreadShell,
     selectedThreadCreation,
+    selectedThreadDetailRef,
     selectedEnvironmentRuntime,
   } = useThreadSelection();
   const selectedThreadProjection = useSelectedThreadProjection();
@@ -307,12 +312,9 @@ export function useThreadComposerState() {
   // Steering needs a live provider turn the adapter can interrupt; the queue
   // workflow already derives that from the session's capabilities.
   const queueWorkflow = useAtomValue(
-    selectedThreadShell === null
+    selectedThreadDetailRef === null
       ? EMPTY_QUEUE_WORKFLOW_ATOM
-      : environmentThreadDetails.queueWorkflowAtom({
-          environmentId: selectedThreadShell.environmentId,
-          threadId: selectedThreadShell.id,
-        }),
+      : environmentThreadDetails.queueWorkflowAtom(selectedThreadDetailRef),
   );
   const canSteerActiveTurn = queueWorkflow?.canPromoteToSteer === true;
   const queuedRunEdit = useQueuedRunEdit(selectedThreadKey);
@@ -331,6 +333,15 @@ export function useThreadComposerState() {
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadShell;
   const modelSelection = selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null;
+  const pendingHandoff = useMemo(
+    () =>
+      resolvePendingHandoff(
+        selectedThreadProjection?.projection,
+        modelSelection,
+        selectedEnvironmentRuntime?.serverConfig?.providers ?? [],
+      ),
+    [modelSelection, selectedThreadProjection, selectedEnvironmentRuntime?.serverConfig?.providers],
+  );
   const runtimeMode = selectedDraft?.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const selectedProvider = selectedEnvironmentRuntime?.serverConfig?.providers.find(
     (provider) => provider.instanceId === modelSelection?.instanceId,
@@ -616,12 +627,14 @@ export function useThreadComposerState() {
       const serverConfig = selectedEnvironmentRuntime?.serverConfig;
       if (
         selectedEnvironmentRuntime?.connectionState === "connected" &&
-        isModelSelectionUnavailable(serverConfig, modelSelection)
+        isModelSelectionUnavailable(serverConfig, modelSelection, thread.projectId)
       ) {
-        Alert.alert(
-          "Antigravity model unavailable",
-          "Set up Antigravity on web or desktop, or choose another model.",
+        const { title, detail } = describeUnavailableModelSelection(
+          serverConfig,
+          modelSelection,
+          thread.projectId,
         );
+        Alert.alert(title, detail);
         return null;
       }
       const provider = serverConfig?.providers.find(
@@ -1086,6 +1099,7 @@ export function useThreadComposerState() {
     cancelQueuedRunEdit,
     onRemoveQueuedEditAttachment,
     modelSelection,
+    pendingHandoff,
     canSwitchThreadProvider,
     runtimeMode,
     interactionMode,
