@@ -6,5 +6,6 @@ vp install
 vp run typecheck
 vp lint --report-unused-disable-directives
 # Upstream's cross-architecture Windows probe test fails on macOS hosts at the base tag too.
+# The two Linux theme icon tests write T3Code.png and t3code.png, which are one file on macOS's case-insensitive filesystem.
 vp test run apps/desktop/src scripts/build-desktop-artifact.test.ts scripts/lib \
-  -t '^(?!.*skips the primary native probe for cross-architecture Windows payloads)'
+  -t '^(?!.*(skips the primary native probe for cross-architecture Windows payloads|installs both app id spellings without creating an icon cache|replaces same-length stale icons and refreshes an existing cache once))'
