@@ -83,6 +83,21 @@ export function PairingRouteSurface({
     autoSubmit(autoPairToken);
   }, [autoPairToken]);
 
+  // A pairing link opened in a tab already on /pair changes only the hash, so the route never remounts.
+  useEffect(() => {
+    const submitTokenFromHash = () => {
+      const token = peekPairingTokenFromUrl();
+      if (!token) {
+        return;
+      }
+      stripPairingTokenFromUrl();
+      setCredential(token);
+      autoSubmit(token);
+    };
+    window.addEventListener("hashchange", submitTokenFromHash);
+    return () => window.removeEventListener("hashchange", submitTokenFromHash);
+  }, []);
+
   return (
     <StandalonePage tone="pairing">
       <StandalonePageHeader
