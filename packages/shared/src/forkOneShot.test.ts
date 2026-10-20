@@ -27,4 +27,10 @@ describe("forkOneShot", () => {
     expect(withOneShotInstruction(text, context)).toBe(`${ONE_SHOT_INSTRUCTION}\n\nfix it`);
     expect(withOneShotInstruction("fix it", undefined)).toBe("fix it");
   });
+
+  it("leaves a slash command at the start of the prompt", () => {
+    const context = withOneShotContext(undefined);
+    expect(withOneShotInstruction("/review the diff", context)).toBe("/review the diff");
+    expect(withOneShotInstruction("  /compact", context)).toBe("  /compact");
+  });
 });

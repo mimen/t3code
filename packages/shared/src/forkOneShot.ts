@@ -43,9 +43,12 @@ export function withOneShotContext(
   };
 }
 
+/** A slash command passes through untouched because adapters parse it from the start of the text. */
 export function withOneShotInstruction(
   userText: string,
   context: OrchestrationMessageContext | undefined,
 ): string {
-  return messageIsOneShot(context) ? `${ONE_SHOT_INSTRUCTION}\n\n${userText}` : userText;
+  return messageIsOneShot(context) && !userText.trimStart().startsWith("/")
+    ? `${ONE_SHOT_INSTRUCTION}\n\n${userText}`
+    : userText;
 }
