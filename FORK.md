@@ -46,8 +46,10 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `apps/server/src/orchestration-v2/ThreadManagementService.ts`             | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/preview/ServerBrowserStream.test.ts`                     | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/ws.ts`                                                   | device-sender: carried upstream #20112, drop on merge                                                                 |
+| `apps/server/src/ws.test.ts`                                              | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `packages/contracts/src/orchestrationV2.ts`                               | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `packages/provider-core/src/server/runtimeInstructions.test.ts`           | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `packages/provider-core/src/server/runtimeInstructions.ts`                | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `packages/contracts/src/git.ts`                                           | git-paths: keeps leading and trailing spaces in file paths (268aa41971)                                               |
 | `packages/contracts/src/git.test.ts`                                      | git-paths: expects whitespace-preserving paths                                                                        |
+| `apps/web/src/components/auth/PairingRouteSurface.tsx`                    | pairing-hash: submits a pairing token that arrives by hashchange (dada3d110b)                                         |
