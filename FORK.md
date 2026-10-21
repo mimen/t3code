@@ -20,12 +20,9 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `apps/desktop/src/app/DesktopEnvironment.test.ts`                         | expects the fork's paths and name                                                                                     |
 | `apps/desktop/src/app/DesktopUserData.test.ts`                            | expects the fork's profile directory                                                                                  |
 | `scripts/build-desktop-artifact.ts`                                       | bundle id and nightly product name from `FORK_IDENTITY`                                                               |
-| `scripts/build-desktop-artifact.test.ts`                                  | expects the fork's product name and bundle id                                                                         |
+| `scripts/build-desktop-artifact.test.ts`                                  | expects the fork's bundle id                                                                                          |
 | `apps/desktop/src/app/DesktopAppIdentity.test.ts`                         | expects the fork's profile and name                                                                                   |
 | `apps/desktop/src/app/DesktopClerk.test.ts`                               | expects the fork's profile directory                                                                                  |
-| `apps/desktop/src/app/DesktopEarlyElectronStartup.test.ts`                | expects the fork's state directory                                                                                    |
-| `apps/desktop/src/app/DesktopPreReadyFileSystem.test.ts`                  | expects the fork's profile directory                                                                                  |
-| `apps/desktop/src/window/DesktopApplicationMenu.test.ts`                  | expects the fork's name in the menu                                                                                   |
 | `packages/shared/package.json`                                            | one-shot: `./forkOneShot` subpath export                                                                              |
 | `apps/server/src/orchestration-v2/ProviderTurnStartService.ts`            | one-shot: prepends the hidden instruction to the provider text; device-sender: carried upstream #20112, drop on merge |
 | `apps/server/src/server.ts`                                               | one-shot: starts `ForkOneShotSettleReactor`                                                                           |
@@ -48,7 +45,7 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `apps/server/src/ws.ts`                                                   | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/ws.test.ts`                                              | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `packages/contracts/src/orchestrationV2.ts`                               | device-sender: carried upstream #20112, drop on merge                                                                 |
-| `packages/provider-core/src/server/runtimeInstructions.test.ts`           | device-sender: carried upstream #20112, drop on merge                                                                 |
+| `packages/provider-core/src/server/runtimeInstructions.test.ts`           | device-sender: carried #20112 tests; upstream deleted the file                                                        |
 | `packages/provider-core/src/server/runtimeInstructions.ts`                | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `packages/contracts/src/git.ts`                                           | git-paths: keeps leading and trailing spaces in file paths (268aa41971)                                               |
 | `packages/contracts/src/git.test.ts`                                      | git-paths: expects whitespace-preserving paths                                                                        |
