@@ -30,9 +30,9 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `apps/server/src/mcp/OrchestratorMcpService.ts`                           | one-shot: `create_threads` attaches the record                                                                        |
 | `apps/server/src/mcp/toolkits/project/tools.ts`                           | one-shot: `settleWhenDone` on `t3_thread_launch`                                                                      |
 | `apps/server/src/mcp/toolkits/project/handlers.ts`                        | one-shot: `t3_thread_launch` attaches the record                                                                      |
-| `apps/web/src/components/chat/ChatComposer.tsx`                           | one-shot: renders the draft toggle and its overflow menu item                                                         |
+| `apps/web/src/components/chat/ComposerControlsBar.tsx`                    | one-shot: renders the draft toggle and its overflow menu item                                                         |
 | `apps/web/src/components/chat/CompactComposerControlsMenu.tsx`            | one-shot: slot for the toggle's overflow menu item                                                                    |
-| `apps/web/src/components/ChatView.tsx`                                    | one-shot: send path adds the record to a first message                                                                |
+| `apps/web/src/components/chat/useComposerSend.ts`                         | one-shot: send path adds the record to a first message                                                                |
 | `apps/server/src/auth/EnvironmentAuth.ts`                                 | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/auth/utils.ts`                                           | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/orchestration-v2/EffectWorker.ts`                        | device-sender: carried upstream #20112, drop on merge                                                                 |
