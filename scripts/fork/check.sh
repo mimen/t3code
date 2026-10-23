@@ -3,6 +3,8 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 vp install
+# Electron 44 has no install script; without this, desktop test files race to extract it in a fresh checkout.
+vp run --filter @t3tools/desktop ensure:electron
 vp run typecheck
 vp lint --report-unused-disable-directives
 # Upstream's cross-architecture Windows probe test fails on macOS hosts at the base tag too.
