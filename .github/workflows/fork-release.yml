@@ -1,0 +1,39 @@
+# Fork-only: every push to main is checked and released on the Mac Mini, which holds
+# the signing keychain. scripts/fork/release.sh skips a commit that is already released.
+name: Fork release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: [self-hosted, fork-release]
+    timeout-minutes: 120
+    env:
+      HUB_ROOT: /Users/mimen/Programming/Repos/hub
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Add upstream remote
+        run: git remote get-url upstream >/dev/null 2>&1 || git remote add upstream https://github.com/pingdotgg/t3code.git
+      # The hub's launchd env: PATH, and the 1Password service account release.sh reads with.
+      - name: Check
+        shell: zsh -e {0}
+        run: |
+          source "$HUB_ROOT/bin/env.zsh"
+          scripts/fork/check.sh
+      - name: Release
+        shell: zsh -e {0}
+        run: |
+          source "$HUB_ROOT/bin/env.zsh"
+          scripts/fork/release.sh "$GITHUB_SHA"

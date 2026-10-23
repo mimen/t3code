@@ -8,6 +8,10 @@
 # Idempotent: exits 0 without building when the newest release already targets <ref>.
 set -euo pipefail
 
+# The push workflow and an upstream sync session can release at once; the second waits, then finds the commit released.
+lock="$HOME/Library/Caches/t3code-fork-release.lock"
+[[ -n "${FORK_RELEASE_LOCKED:-}" ]] || FORK_RELEASE_LOCKED=1 exec lockf -k "$lock" bash "$0" "$@"
+
 REPO=mimen/t3code
 IDENTITY="Apple Development: Created via API (5VG478JB32)"
 KEYCHAIN="$HOME/Library/Keychains/fork-signing.keychain-db"
