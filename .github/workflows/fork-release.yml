@@ -16,7 +16,8 @@ permissions:
 
 jobs:
   release:
-    runs-on: [self-hosted, fork-release]
+    # The runner carries only this label, so no other workflow can land on the Mini.
+    runs-on: fork-release
     timeout-minutes: 120
     env:
       HUB_ROOT: /Users/mimen/Programming/Repos/hub
