@@ -19,7 +19,7 @@ export function resolveSnoozePresets(
 ): ReadonlyArray<SnoozePreset> {
   return resolveSharedSnoozePresets(now).map((preset) => {
     const wake = parseTimestampDate(preset.snoozedUntil);
-    if (wake === null) return preset;
+    if (wake === null || preset.id === "someday") return preset; // fork: someday-snooze
     const time = timeOfDayLabel(wake, timestampFormat);
     return {
       ...preset,

@@ -19,6 +19,7 @@ import {
   effectiveSnoozed,
   threadWokeAt,
   isThreadWokeUnseen,
+  isSomedaySnooze,
   snoozeWakeLabel,
 } from "@t3tools/client-runtime/state/thread-settled";
 import type { WorktreeSetupCardProps } from "./worktree-setup-card";
@@ -751,7 +752,9 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
       const state = snoozed ? "snoozed" : settled ? "settled" : "woke";
       const label =
         snoozed && snoozedUntil !== null
-          ? `Snoozed, wakes in ${snoozeWakeLabel(snoozedUntil, { now: lifecycleNow })}`
+          ? isSomedaySnooze(snoozedUntil) // fork: someday-snooze
+            ? "Snoozed until someday"
+            : `Snoozed, wakes in ${snoozeWakeLabel(snoozedUntil, { now: lifecycleNow })}`
           : settled
             ? "Settled"
             : "Woke from snooze";

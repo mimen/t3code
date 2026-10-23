@@ -1,7 +1,10 @@
 // @effect-diagnostics globalDate:off -- UI snooze presets use local calendar boundaries and Intl labels.
 import * as DateTime from "effect/DateTime";
 
+import { isSomedaySnooze, SOMEDAY_SNOOZE_PRESET } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
 import type { EnvironmentThreadShell, PendingSubagentRequest } from "./models.ts";
+
+export { isSomedaySnooze }; // fork: someday-snooze
 
 interface SettlementRunLike {
   readonly turnId?: unknown;
@@ -172,7 +175,13 @@ const HOUR_MS = 60 * 60 * 1_000;
 const EVENING_HOUR = 18;
 const MORNING_HOUR = 9;
 
-export type SnoozePresetId = "hour" | "three-hours" | "evening" | "tomorrow" | "next-week";
+export type SnoozePresetId =
+  | "hour"
+  | "three-hours"
+  | "evening"
+  | "tomorrow"
+  | "next-week"
+  | "someday"; // fork: someday-snooze
 
 export interface SnoozePreset {
   readonly id: SnoozePresetId;
@@ -247,6 +256,7 @@ export function resolveSnoozePresets(now: Date): ReadonlyArray<SnoozePreset> {
     });
   }
 
+  presets.push(SOMEDAY_SNOOZE_PRESET); // fork: someday-snooze
   return presets;
 }
 
@@ -254,6 +264,7 @@ export function snoozeWakeLabel(snoozedUntil: string, options: { readonly now: s
   const wakeMs = Date.parse(snoozedUntil);
   const nowMs = Date.parse(options.now);
   if (Number.isNaN(wakeMs) || Number.isNaN(nowMs)) return "now";
+  if (isSomedaySnooze(snoozedUntil)) return "someday"; // fork: someday-snooze
   const remainingMs = wakeMs - nowMs;
   if (remainingMs <= 0) return "now";
   if (remainingMs < HOUR_MS) return `${Math.max(1, Math.ceil(remainingMs / 60_000))}m`;

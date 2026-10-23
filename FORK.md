@@ -50,3 +50,7 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `packages/contracts/src/git.ts`                                           | git-paths: keeps leading and trailing spaces in file paths (268aa41971)                                               |
 | `packages/contracts/src/git.test.ts`                                      | git-paths: expects whitespace-preserving paths                                                                        |
 | `apps/web/src/components/auth/PairingRouteSurface.tsx`                    | pairing-hash: submits a pairing token that arrives by hashchange (dada3d110b)                                         |
+| `packages/client-runtime/src/state/threadSettled.ts`                      | someday-snooze: adds the Someday preset and its wake label                                                            |
+| `packages/client-runtime/src/state/threadSnoozed.test.ts`                 | someday-snooze: expects Someday in the preset list                                                                    |
+| `apps/web/src/components/Sidebar.snooze.ts`                               | someday-snooze: keeps Someday's label instead of a wake time                                                          |
+| `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`                 | someday-snooze: "Snoozed until someday" instead of a countdown                                                        |

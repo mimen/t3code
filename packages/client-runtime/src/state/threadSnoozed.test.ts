@@ -279,6 +279,7 @@ describe("resolveSnoozePresets", () => {
       "three-hours",
       "tomorrow",
       "next-week",
+      "someday",
     ]);
   });
 
@@ -289,6 +290,7 @@ describe("resolveSnoozePresets", () => {
       "three-hours",
       "evening",
       "tomorrow",
+      "someday",
     ]);
     const tomorrow = new Date(presets.find((preset) => preset.id === "tomorrow")!.snoozedUntil);
     expect(tomorrow.getDay()).toBe(1);
