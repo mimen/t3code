@@ -918,9 +918,7 @@ it.effect("tells the provider which device sent each user message, ignoring clie
   ),
 );
 
-// A draft that never reaches a paragraph boundary is held back while it
-// streams. Codex only flushes it at turn end, after the final answer is written,
-// so the draft must already own its place from before the steer.
+// Codex flushes held drafts after the final answer; reserve their pre-steer position before turn end.
 it.effect("keeps a held commentary draft before the steer when turn end flushes it", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -966,8 +964,6 @@ it.effect("keeps a held commentary draft before the steer when turn end flushes 
             Effect.forkScoped,
           );
 
-        // The cut-off draft starts first; the commentary after it is written,
-        // so the draft has been seen by the time the steer arrives.
         yield* Queue.offer(events, assistantItem("draft", "Let me look at the", true));
         const commentaryWritten = yield* watch(
           (event) => event.type === "turn-item.updated" && event.payload.id === "commentary",
