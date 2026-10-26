@@ -685,7 +685,7 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
       const label =
         snoozed && snoozedUntil !== null
           ? isSomedaySnooze(snoozedUntil) // fork: someday-snooze
-            ? "Snoozed until someday"
+            ? "Saved for later"
             : `Snoozed, wakes in ${snoozeWakeLabel(snoozedUntil, { now: lifecycleNow })}`
           : settled
             ? "Settled"

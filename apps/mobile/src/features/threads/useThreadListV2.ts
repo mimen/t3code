@@ -12,6 +12,7 @@ import {
   threadListInboxReturns,
 } from "./threadListV2";
 import { computeThreadMoveAvailability } from "./threadOrder";
+import { splitLaterShelf, useLaterShelfExpanded } from "./forkLaterShelf"; // fork: later-shelf
 
 /**
  * Screens' select handlers read the content-only key set; a fresh one per list rebuild gave
@@ -56,6 +57,7 @@ export function useThreadListV2(input: {
   readonly selectedThreadKey: string | null;
 }) {
   const { threads, workingShelfEnabled } = input;
+  const laterShelfExpanded = useLaterShelfExpanded(); // fork: later-shelf
   // A thread can stop working when the threads change, or when its exit grace expires.
   const inboxVersion = useSyncExternalStore(
     threadListInboxReturns.subscribe,
@@ -114,7 +116,7 @@ export function useThreadListV2(input: {
     workingShelfExpanded: input.workingShelfExpanded,
     inboxReturnAt: inbox.returnedAt,
     isWorking: inbox.isWorking,
-    snoozedShelfExpanded: input.snoozedShelfExpanded,
+    snoozedShelfExpanded: true, // fork: later-shelf, which collapses each shelf itself
     settledShelfExpanded: input.settledShelfExpanded,
     selectedThreadKey: input.selectedThreadKey,
     isListedSettled: olderSettledShelf.isListed,
@@ -164,7 +166,12 @@ export function useThreadListV2(input: {
     moveAvailability,
     shelfPreferencesLoading: !input.shelfPreferencesLoaded,
   });
-  return { layout, items, contentOnlyThreadKeys, olderSettledShelf };
+  const laterItems = splitLaterShelf(items, {
+    snoozedExpanded: input.snoozedShelfExpanded,
+    laterExpanded: laterShelfExpanded,
+    selectedThreadKey: input.selectedThreadKey,
+  }); // fork: later-shelf
+  return { layout, items: laterItems, contentOnlyThreadKeys, olderSettledShelf }; // fork: later-shelf
 }
 
 /** The list's scope per environment: its projects there, or every project. */

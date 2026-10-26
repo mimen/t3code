@@ -186,6 +186,7 @@ export type SidebarListMarker =
   | "pinned-divider"
   | "working-header"
   | "snoozed-header"
+  | "later-header" // fork: later-shelf
   | "settled-header";
 
 export function sidebarMarkerId(marker: SidebarListMarker): string {
@@ -207,7 +208,8 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
     if (item.kind !== "marker") continue;
     if (item.marker === "pinned-divider") section = "active";
     else if (item.marker === "working-header") section = "working";
-    else if (item.marker === "snoozed-header") section = "snoozed";
+    else if (item.marker === "snoozed-header" || item.marker === "later-header")
+      section = "snoozed"; // fork: later-shelf
     else if (item.marker === "settled-header") section = "settled";
   }
   return section;
@@ -240,6 +242,7 @@ export function resolveSidebarDropTarget(
       else if (
         item.marker === "working-header" ||
         item.marker === "snoozed-header" ||
+        item.marker === "later-header" || // fork: later-shelf
         item.marker === "settled-header"
       )
         break;

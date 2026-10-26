@@ -101,7 +101,7 @@ export function SidebarDragBoundary(props: {
 }
 
 export function SidebarSectionHeader(props: {
-  marker: "working-header" | "snoozed-header" | "settled-header";
+  marker: "working-header" | "snoozed-header" | "later-header" | "settled-header"; // fork: later-shelf
   label: string;
   /** A muted trailing count; classic shows it only while the shelf is collapsed. */
   count: number;
@@ -115,7 +115,9 @@ export function SidebarSectionHeader(props: {
       ? "working"
       : props.marker === "snoozed-header"
         ? "snoozed"
-        : "settled";
+        : props.marker === "later-header" // fork: later-shelf
+          ? "later"
+          : "settled";
   const redesign = useClientSettings((s) => s.redesignEnabled);
   const collapsedCount = props.toggle.expanded ? null : props.count;
   const count = redesign ? props.count : collapsedCount;

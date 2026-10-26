@@ -117,6 +117,7 @@ import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { LaterShelfHeader, useLaterShelf } from "./Sidebar.forkLater"; // fork: later-shelf
 import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
@@ -451,9 +452,10 @@ function useSidebarThreads(input: {
   const renderedSettledThreads = settledShelfExpanded
     ? visibleSettledThreads
     : routeThreadOnly(visibleSettledThreads, routeRowThreadKey);
+  const laterShelf = useLaterShelf(snoozedThreads, routeRowThreadKey); // fork: later-shelf
   const visibleSnoozedThreads = snoozedShelfExpanded
-    ? snoozedThreads
-    : routeThreadOnly(snoozedThreads, routeRowThreadKey);
+    ? laterShelf.timed // fork: later-shelf
+    : routeThreadOnly(laterShelf.timed, routeRowThreadKey); // fork: later-shelf
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
     : routeThreadOnly(workingThreads, routeRowThreadKey);
@@ -462,6 +464,7 @@ function useSidebarThreads(input: {
     ...activeThreads,
     ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
+    ...laterShelf.visible, // fork: later-shelf
     ...renderedSettledThreads,
   ];
   const sectionByThreadKey = new Map<string, SidebarSection>();
@@ -498,6 +501,7 @@ function useSidebarThreads(input: {
     toggleSettledShelf: () => setSettledShelfExpanded((value) => !value),
     snoozedShelfExpanded,
     toggleSnoozedShelf: () => setSnoozedShelfExpanded((value) => !value),
+    laterShelf, // fork: later-shelf
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
     renderedSettledThreads,
@@ -1117,6 +1121,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     toggleSettledShelf,
     snoozedShelfExpanded,
     toggleSnoozedShelf,
+    laterShelf, // fork: later-shelf
     workingShelfExpanded,
     toggleWorkingShelf,
     renderedSettledThreads,
@@ -1721,9 +1726,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       items.push({ kind: "marker", marker: "working-header" });
       items.push(...rowsOf(visibleWorkingThreads, "working"));
     }
-    if (snoozedThreads.length > 0) {
+    if (laterShelf.timed.length > 0) {
+      // fork: later-shelf
       items.push({ kind: "marker", marker: "snoozed-header" });
       items.push(...rowsOf(visibleSnoozedThreads, "snoozed"));
+    }
+    if (laterShelf.later.length > 0) {
+      // fork: later-shelf
+      items.push({ kind: "marker", marker: "later-header" });
+      items.push(...rowsOf(laterShelf.visible, "snoozed"));
     }
     items.push({ kind: "marker", marker: "settled-header" });
     const settledRows = rowsOf(renderedSettledThreads, "settled");
@@ -1797,6 +1808,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledVisibleCount,
     routeThreadKey: routeRowThreadKey,
     snoozedThreadCount: snoozedThreads.length,
+    snoozeShelfCounts: { timed: laterShelf.timed.length, later: laterShelf.later.length }, // fork: later-shelf
   });
   const draggedThreadKey = dragState?.activeKey;
   const draggedFromSection = dragState?.activeSection;
@@ -3138,11 +3150,23 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 marker="snoozed-header"
                                 className={cn(workingThreads.length === 0 && "mt-auto")}
                                 label="Snoozed"
-                                count={snoozedThreads.length}
+                                count={laterShelf.timed.length} // fork: later-shelf
                                 toggle={{
                                   expanded: snoozedShelfExpanded,
                                   onToggle: toggleSnoozedShelf,
                                 }}
+                              />,
+                            );
+                            break;
+                          case "later-header": // fork: later-shelf
+                            items.push(
+                              <LaterShelfHeader
+                                key="later-shelf-header"
+                                shelf={laterShelf}
+                                className={cn(
+                                  workingThreads.length + laterShelf.timed.length === 0 &&
+                                    "mt-auto",
+                                )}
                               />,
                             );
                             break;

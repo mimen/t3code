@@ -64,6 +64,7 @@ import {
   ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
 } from "../threads/thread-list-v2-items";
+import { ThreadListV2LaterShelfHeader } from "../threads/forkLaterShelfHeader"; // fork: later-shelf
 import { useThreadRowProviderInstanceResolver } from "../threads/thread-provider-instance";
 import { useOpenThreadPullRequests } from "../threads/use-open-thread-pull-requests";
 import type { ThreadPrPresentation } from "../../state/thread-pr-presentation";
@@ -563,6 +564,7 @@ export function HomeScreen(props: HomeScreenProps) {
         />
       );
     }
+    if (item.type === "v2-later-shelf") return <ThreadListV2LaterShelfHeader item={item} />; // fork: later-shelf
     if (item.type === "v2-settled-shelf") {
       return (
         <ThreadListV2SettledShelfHeader

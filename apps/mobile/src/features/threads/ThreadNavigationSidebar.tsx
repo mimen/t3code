@@ -66,6 +66,7 @@ import {
   ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
 } from "./thread-list-v2-items";
+import { ThreadListV2LaterShelfHeader } from "./forkLaterShelfHeader"; // fork: later-shelf
 import { useThreadRowProviderInstanceResolver } from "./thread-provider-instance";
 import type { ThreadPrPresentation } from "../../state/thread-pr-presentation";
 import {
@@ -647,6 +648,8 @@ function ThreadNavigationSidebarPane(
             pane="sidebar"
           />
         );
+      case "v2-later-shelf": // fork: later-shelf
+        return <ThreadListV2LaterShelfHeader item={item} pane="sidebar" />;
       case "v2-settled-shelf":
         return (
           <ThreadListV2SettledShelfHeader

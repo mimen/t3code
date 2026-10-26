@@ -8,6 +8,7 @@ import {
   type SidebarListMarker,
   type SidebarSection,
 } from "./Sidebar.logic";
+import { projectSnoozeShelves } from "./Sidebar.forkLater"; // fork: later-shelf
 
 const stationary = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
 const hidden = { ...stationary, scaleY: 0 };
@@ -17,6 +18,7 @@ const isShelfHeader = (item: SidebarListItem | undefined) =>
   item?.kind === "marker" &&
   (item.marker === "working-header" ||
     item.marker === "snoozed-header" ||
+    item.marker === "later-header" || // fork: later-shelf
     item.marker === "settled-header");
 
 export function restrictBelowSidebarLabel(
@@ -56,7 +58,9 @@ export function createSidebarCollisionDetection(
       if (pointer.x >= boundary.left && pointer.x <= boundary.right) {
         if (pointer.y < previousY && pointer.y <= boundary.bottom) boundarySection = "pinned";
         else if (pointer.y > previousY && pointer.y >= boundary.top) boundarySection = "active";
-        const nextHeader = (["working-header", "snoozed-header", "settled-header"] as const)
+        const nextHeader = (
+          ["working-header", "snoozed-header", "later-header", "settled-header"] as const
+        ) // fork: later-shelf
           .map((marker) =>
             args.droppableContainers.find((container) => container.id === sidebarMarkerId(marker)),
           )
@@ -98,6 +102,7 @@ export function createSidebarSortingStrategy(input: {
   settledVisibleCount?: number;
   routeThreadKey?: string | null;
   snoozedThreadCount?: number;
+  snoozeShelfCounts?: { readonly timed: number; readonly later: number }; // fork: later-shelf
   cardHeight?: number;
   slimHeight?: number;
   boundaryLabelHeight?: number;
@@ -190,6 +195,7 @@ export function createSidebarSortingStrategy(input: {
     }
     marker("settled-header");
     section("settled");
+    projectSnoozeShelves(projected, items, active.key, input.snoozeShelfCounts); // fork: later-shelf
     const heights = projected.map((item) => {
       const index = indices.get(sidebarListItemId(item));
       const rect = index === undefined ? undefined : rects[index];

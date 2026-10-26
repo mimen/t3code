@@ -40,6 +40,7 @@ import {
   reconcilePendingThreadOrder,
   type PendingThreadOrder,
 } from "./threadOrder";
+import type { ThreadListV2LaterShelfListItem } from "./forkLaterShelf"; // fork: later-shelf
 
 export { snoozeWakeLabel };
 
@@ -343,6 +344,7 @@ export type ThreadListV2ListItem =
   | ThreadListV2PendingListItem
   | ThreadListV2WorkingShelfListItem
   | ThreadListV2SnoozedShelfListItem
+  | ThreadListV2LaterShelfListItem // fork: later-shelf
   | ThreadListV2SettledShelfListItem;
 
 export function isThreadListV2ListItem(value: {
@@ -353,6 +355,7 @@ export function isThreadListV2ListItem(value: {
     value.type === "v2-pending" ||
     value.type === "v2-working-shelf" ||
     value.type === "v2-snoozed-shelf" ||
+    value.type === "v2-later-shelf" || // fork: later-shelf
     value.type === "v2-settled-shelf"
   );
 }
@@ -398,6 +401,13 @@ export function threadListV2ListItemsAreEqual(
     case "v2-snoozed-shelf":
       return (
         previous.type === "v2-snoozed-shelf" &&
+        previous.count === item.count &&
+        previous.expanded === item.expanded &&
+        previous.disabled === item.disabled
+      );
+    case "v2-later-shelf": // fork: later-shelf
+      return (
+        previous.type === "v2-later-shelf" &&
         previous.count === item.count &&
         previous.expanded === item.expanded &&
         previous.disabled === item.disabled

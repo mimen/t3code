@@ -4,7 +4,7 @@ import * as DateTime from "effect/DateTime";
 import { isSomedaySnooze, SOMEDAY_SNOOZE_PRESET } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
 import type { EnvironmentThreadShell, PendingSubagentRequest } from "./models.ts";
 
-export { isSomedaySnooze }; // fork: someday-snooze
+export { isSomedaySnooze, splitLaterSnoozes } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
 
 interface SettlementRunLike {
   readonly turnId?: unknown;
@@ -266,7 +266,7 @@ export function snoozeWakeLabel(snoozedUntil: string, options: { readonly now: s
   const wakeMs = Date.parse(snoozedUntil);
   const nowMs = Date.parse(options.now);
   if (Number.isNaN(wakeMs) || Number.isNaN(nowMs)) return "now";
-  if (isSomedaySnooze(snoozedUntil)) return "someday"; // fork: someday-snooze
+  if (isSomedaySnooze(snoozedUntil)) return "later"; // fork: someday-snooze
   const remainingMs = wakeMs - nowMs;
   if (remainingMs <= 0) return "now";
   if (remainingMs < HOUR_MS) return `${Math.max(1, Math.ceil(remainingMs / 60_000))}m`;
