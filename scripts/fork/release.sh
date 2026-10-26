@@ -31,7 +31,8 @@ git -C "$root" fetch -q upstream 'refs/tags/v*:refs/tags/v*'
 sha="$(git -C "$root" rev-parse --verify "$ref^{commit}")"
 
 latest="$(gh release list -R "$REPO" --limit 1 --json tagName --jq '.[0].tagName // ""')"
-if [[ -n "$latest" && "$(gh release view "$latest" -R "$REPO" --json targetCommitish --jq .targetCommitish)" == "$sha" ]]; then
+prev_sha="$([[ -n "$latest" ]] && gh release view "$latest" -R "$REPO" --json targetCommitish --jq .targetCommitish || true)"
+if [[ "$prev_sha" == "$sha" ]]; then
   echo "release: $latest already targets $sha"
   exit 0
 fi
@@ -39,8 +40,9 @@ fi
 upstream_tag="$(git -C "$root" tag --merged "$sha" -l 'v*-nightly.*' --sort=-creatordate | head -n 1)"
 core="$(sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' <<<"$upstream_tag")"
 [[ "$core" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "release: no upstream nightly tag merged into $sha" >&2; exit 1; }
-# The trailing number orders same-day builds; upstream uses its run number, the fork uses UTC HHMM.
-version="$core-nightly.$(date -u +%Y%m%d).$((10#$(date -u +%H%M)))"
+# The trailing number orders same-day builds: 1HHMM in UTC. Upstream uses its run number. A fixed
+# width keeps GitHub's releases page, which sorts tag names as text, in build order.
+version="$core-nightly.$(date -u +%Y%m%d).$((10000 + 10#$(date -u +%H%M)))"
 
 cache="$HOME/Library/Caches/t3code-fork-release"
 work="$cache/src-$sha"
@@ -77,6 +79,6 @@ fi
 
 gh release create "v$version" -R "$REPO" --target "$sha" --prerelease \
   --title "T3 Code (Fork) $version" \
-  --notes "Fork build of $sha, upstream $upstream_tag." \
+  --notes "$("$root/scripts/fork/release-notes.sh" "$prev_sha" "$sha")" \
   "$out"/*.dmg "$out"/*.zip "$out"/*.blockmap "$out"/nightly-mac.yml
 echo "release: https://github.com/$REPO/releases/tag/v$version"
