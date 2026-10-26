@@ -51,6 +51,7 @@ describe("buildThreadActionMenuItems", () => {
             "pin",
             "settle",
             "snooze",
+            "snooze:someday", // fork: later-shelf
             "rename",
             "regenerate-title",
             "auto-settle",

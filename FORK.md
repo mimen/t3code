@@ -55,13 +55,15 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `packages/client-runtime/src/state/threadSnoozed.test.ts`                 | someday-snooze: expects the Later preset in the preset list                                                           |
 | `apps/web/src/components/Sidebar.snooze.ts`                               | someday-snooze: keeps Later's label instead of a wake time                                                            |
 | `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`                 | someday-snooze: "Saved for later" instead of a countdown                                                              |
-| `apps/web/src/components/Sidebar.tsx`                                     | later-shelf: splits Later threads out of Snoozed and renders their shelf                                              |
+| `apps/web/src/components/Sidebar.tsx`                                     | later-shelf: splits Later threads out of Snoozed, renders their shelf, and adds Later to the bulk menu                |
 | `apps/web/src/components/Sidebar.logic.ts`                                | later-shelf: `later-header` marker, a snoozed slot that takes no drops                                                |
 | `apps/web/src/components/Sidebar.drag.ts`                                 | later-shelf: shelf header list and drag projection hook                                                               |
 | `apps/web/src/components/sidebar/SidebarListMarkers.tsx`                  | later-shelf: header accepts the `later-header` marker                                                                 |
 | `apps/mobile/src/features/threads/threadListV2.ts`                        | later-shelf: `v2-later-shelf` list item type and equality                                                             |
 | `apps/mobile/src/features/threads/useThreadListV2.ts`                     | later-shelf: builds every snoozed row, then splits and collapses both shelves                                         |
-| `apps/mobile/src/features/threads/thread-list-v2-items.tsx`               | later-shelf: exports the shelf header and adds its Later label                                                        |
+| `apps/mobile/src/features/threads/thread-list-v2-items.tsx`               | later-shelf: exports the shelf header, adds its Later label, and puts Later beside Snooze in the long-press menu      |
 | `apps/mobile/src/features/home/HomeScreen.tsx`                            | later-shelf: renders the Later shelf header                                                                           |
 | `apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx`            | later-shelf: renders the Later shelf header                                                                           |
+| `apps/web/src/components/threadActionMenu.logic.test.ts`                  | later-shelf: expects Later disabled without permission                                                                |
+| `apps/web/src/components/threadActionMenu.logic.ts`                       | later-shelf: Later sits right after Snooze in the thread menu                                                         |
 | `apps/web/vite.config.ts`                                                 | space-safe-alias: `NodeURL.fileURLToPath` for the fonts-cjk alias so a checkout path with a space resolves            |

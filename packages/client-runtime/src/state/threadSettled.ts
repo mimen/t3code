@@ -4,7 +4,7 @@ import * as DateTime from "effect/DateTime";
 import { isSomedaySnooze, SOMEDAY_SNOOZE_PRESET } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
 import type { EnvironmentThreadShell, PendingSubagentRequest } from "./models.ts";
 
-export { isSomedaySnooze, splitLaterSnoozes } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
+export { isSomedaySnooze, splitLaterSnoozes, timedSnoozePresets } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
 
 interface SettlementRunLike {
   readonly turnId?: unknown;

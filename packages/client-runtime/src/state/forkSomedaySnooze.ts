@@ -24,3 +24,10 @@ export function splitLaterSnoozes<T extends { readonly snoozedUntil?: string | n
   for (const thread of snoozed) (isSomedaySnooze(thread.snoozedUntil) ? later : timed).push(thread);
   return { timed, later };
 }
+
+// Later sits beside Snooze in thread menus, so the Snooze submenu lists only timed presets.
+export function timedSnoozePresets<T extends { readonly id: string }>(
+  presets: ReadonlyArray<T>,
+): T[] {
+  return presets.filter((preset) => preset.id !== SOMEDAY_SNOOZE_PRESET.id);
+}

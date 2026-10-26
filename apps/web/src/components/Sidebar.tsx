@@ -118,6 +118,8 @@ import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { LaterShelfHeader, useLaterShelf } from "./Sidebar.forkLater"; // fork: later-shelf
+import { timedSnoozePresets } from "@t3tools/client-runtime/state/thread-settled"; // fork: later-shelf
+import { laterMenuItem } from "./threadActionMenu.forkLater"; // fork: later-shelf
 import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
@@ -2104,7 +2106,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     label: `Snooze (${count})`,
                     disabled: !canOperateThreads(selectedThreads),
                     children: [
-                      ...snoozePresets.map((preset) => ({
+                      ...timedSnoozePresets(snoozePresets).map((preset) => ({
+                        // fork: later-shelf
                         id: `snooze:${preset.id}`,
                         label: `${preset.label} (${preset.whenLabel})`,
                         disabled: !canOperateThreads(selectedThreads),
@@ -2117,6 +2120,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       },
                     ],
                   },
+                  laterMenuItem({
+                    label: `Later (${count})`,
+                    disabled: !canOperateThreads(selectedThreads),
+                  }), // fork: later-shelf
                 ]
               : []),
             ...(titleRegenerationMenuItem

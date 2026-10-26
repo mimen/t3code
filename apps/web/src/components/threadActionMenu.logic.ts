@@ -1,5 +1,7 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
+import { timedSnoozePresets } from "@t3tools/client-runtime/state/thread-settled"; // fork: later-shelf
+import { laterMenuItem } from "./threadActionMenu.forkLater"; // fork: later-shelf
 
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
@@ -142,13 +144,15 @@ export function buildThreadActionMenuItems(
                 icon: "clock",
                 disabled: !state.canSnoozeNow,
                 children: [
-                  ...state.snoozePresets.map((preset) => ({
+                  ...timedSnoozePresets(state.snoozePresets).map((preset) => ({
+                    // fork: later-shelf
                     id: `snooze:${preset.id}` as const,
                     label: `${preset.label} (${preset.whenLabel})`,
                   })),
                   { id: "snooze:custom" as const, label: "Custom…", separatorBefore: true },
                 ],
               },
+          ...(state.isSnoozed ? [] : [laterMenuItem({ disabled: !state.canSnoozeNow })]), // fork: later-shelf
         ]
       : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },

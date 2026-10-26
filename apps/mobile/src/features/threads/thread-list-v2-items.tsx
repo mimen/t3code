@@ -830,8 +830,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         id: "snooze",
         title: "Snooze",
         image: "clock",
-        subactions: snoozePresetActions,
+        subactions: snoozePresetActions.filter((action) => action.id !== "snooze:someday"), // fork: later-shelf
       },
+      { id: "snooze:someday", title: "Later", image: "clock" }, // fork: later-shelf
       ...arrangementMenuItems,
       ...titleMenuItems,
       ...autoSettleMenuItems,
