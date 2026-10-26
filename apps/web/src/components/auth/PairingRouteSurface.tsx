@@ -83,7 +83,7 @@ export function PairingRouteSurface({
     autoSubmit(autoPairToken);
   }, [autoPairToken]);
 
-  // A pairing link opened in a tab already on /pair changes only the hash, so the route never remounts.
+  // oxlint-disable-next-line t3code/react-effect-budget -- fork: pairing-hash. A pairing link opened in a tab already on /pair changes only the hash, so the route never remounts.
   useEffect(() => {
     const submitTokenFromHash = () => {
       const token = peekPairingTokenFromUrl();

@@ -55,3 +55,4 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `packages/client-runtime/src/state/threadSnoozed.test.ts`                 | someday-snooze: expects Someday in the preset list                                                                    |
 | `apps/web/src/components/Sidebar.snooze.ts`                               | someday-snooze: keeps Someday's label instead of a wake time                                                          |
 | `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`                 | someday-snooze: "Snoozed until someday" instead of a countdown                                                        |
+| `apps/web/vite.config.ts`                                                 | space-safe-alias: `NodeURL.fileURLToPath` for the fonts-cjk alias so a checkout path with a space resolves            |
