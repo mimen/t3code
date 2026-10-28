@@ -52,8 +52,7 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `packages/contracts/src/git.test.ts`                                      | git-paths: expects whitespace-preserving paths                                                                        |
 | `apps/web/src/components/auth/PairingRouteSurface.tsx`                    | pairing-hash: submits a pairing token that arrives by hashchange (dada3d110b)                                         |
 | `packages/client-runtime/src/state/threadSettled.ts`                      | someday-snooze: adds the Later preset, its wake label, and the shelf split export                                     |
-| `packages/client-runtime/src/state/threadSnoozed.test.ts`                 | someday-snooze: expects the Later preset in the preset list                                                           |
-| `apps/web/src/components/Sidebar.snooze.ts`                               | someday-snooze: keeps Later's label instead of a wake time                                                            |
+| `packages/client-runtime/src/state/threadSnoozed.test.ts`                 | someday-snooze: upstream preset cases filter out the Later preset                                                     |
 | `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`                 | someday-snooze: "Saved for later" instead of a countdown                                                              |
 | `apps/web/src/components/Sidebar.tsx`                                     | later-shelf: splits Later threads out of Snoozed, renders their shelf, and adds Later to the bulk menu                |
 | `apps/web/src/components/Sidebar.logic.ts`                                | later-shelf: `later-header` marker, a snoozed slot that takes no drops                                                |
