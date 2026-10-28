@@ -4,7 +4,7 @@ import type { ProviderInstanceEntry } from "../../providerInstances";
 import { type AppModelOption } from "../../modelSelection";
 import { CircleAlertIcon } from "lucide-react";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
-import { ForkOneShotMenuItem, ForkOneShotToggle } from "./ForkOneShotToggle"; // fork: one-shot
+import { ForkOneShotToggle } from "./ForkOneShotToggle"; // fork: one-shot
 import { ComposerControl } from "./ComposerControl";
 import {
   ComposerPermissionsSection,
@@ -213,6 +213,17 @@ export function ComposerControlsBar(props: {
     extraMenuOwnsModeShortcut: effortOwnsModeShortcut,
   });
   const restingBlockDefs = [
+    // fork: one-shot, first so the tail-first overflow never hides it
+    ...(routeKind === "draft" && draftId
+      ? [
+          {
+            id: "one-shot",
+            content: (
+              <ForkOneShotToggle draftId={draftId} size={composerControlsCollapsed ? "xs" : "sm"} />
+            ),
+          },
+        ]
+      : []),
     ...(providerTraitsPicker
       ? [
           {
@@ -242,17 +253,6 @@ export function ComposerControlsBar(props: {
             ),
           },
         ]),
-    // fork: one-shot
-    ...(routeKind === "draft" && draftId
-      ? [
-          {
-            id: "one-shot",
-            content: (
-              <ForkOneShotToggle draftId={draftId} size={composerControlsCollapsed ? "xs" : "sm"} />
-            ),
-          },
-        ]
-      : []),
   ];
   // Its own element, so typing (which rebuilds the controls around it) leaves it cached.
   const composerModelPicker = (
@@ -367,12 +367,6 @@ export function ComposerControlsBar(props: {
             showPermissions={overflowShowsPermissions}
             onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
-            // fork: one-shot, the draft toggle's entry when the composer overflows
-            forkOneShotItem={
-              hiddenRestingBlockIds.includes("one-shot") ? (
-                <ForkOneShotMenuItem draftId={draftId} />
-              ) : undefined
-            }
           />
         </div>
       </>

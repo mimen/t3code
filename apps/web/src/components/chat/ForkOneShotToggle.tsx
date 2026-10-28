@@ -3,14 +3,8 @@ import { withOneShotContext } from "@t3tools/shared/forkOneShot";
 import { CircleCheckBigIcon } from "lucide-react";
 import { create } from "zustand";
 
-import { MenuCheckboxItem } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  ComposerControl,
-  ComposerControlIcon,
-  ComposerControlSeparator,
-  type ComposerControlSize,
-} from "./ComposerControl";
+import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
 
 /**
  * Fork: the composer's "One-shot" toggle for a new thread's first message. Keyed by draft id, so
@@ -50,39 +44,24 @@ export function ForkOneShotToggle(props: { draftId: string | null; size: Compose
   const { draftId } = props;
   if (draftId === null) return null;
   return (
-    <>
-      <ComposerControlSeparator size={props.size} />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ComposerControl
-              size={props.size}
-              type="button"
-              aria-pressed={enabled}
-              aria-label="One-shot"
-              onClick={() => toggle(draftId)}
-            />
-          }
-        >
-          <ComposerControlIcon icon={CircleCheckBigIcon} size={props.size} />
-          <span data-composer-control-label className="sr-only sm:not-sr-only">
-            One-shot
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top">{TOOLTIP}</TooltipPopup>
-      </Tooltip>
-    </>
-  );
-}
-
-/** The same toggle inside the composer's overflow menu, when the mode block is hidden. */
-export function ForkOneShotMenuItem(props: { draftId: string | null }) {
-  const enabled = useOneShot(props.draftId);
-  const { draftId } = props;
-  if (draftId === null) return null;
-  return (
-    <MenuCheckboxItem checked={enabled} onCheckedChange={() => toggle(draftId)} title={TOOLTIP}>
-      One-shot
-    </MenuCheckboxItem>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ComposerControl
+            size={props.size}
+            type="button"
+            aria-pressed={enabled}
+            aria-label="One-shot"
+            onClick={() => toggle(draftId)}
+          />
+        }
+      >
+        <ComposerControlIcon icon={CircleCheckBigIcon} size={props.size} />
+        <span data-composer-control-label className="sr-only sm:not-sr-only">
+          One-shot
+        </span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{TOOLTIP}</TooltipPopup>
+    </Tooltip>
   );
 }
