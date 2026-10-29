@@ -9,7 +9,7 @@ import {
  * user message as an unknown-kind context record, so it needs no contract change, and the
  * message text never references it, so no chip renders.
  */
-export const ONE_SHOT_CONTEXT_KIND = "fork-one-shot";
+const ONE_SHOT_CONTEXT_KIND = "fork-one-shot";
 
 export const ONE_SHOT_INSTRUCTION = [
   "<t3_one_shot>",
@@ -19,7 +19,7 @@ export const ONE_SHOT_INSTRUCTION = [
   "</t3_one_shot>",
 ].join("\n");
 
-export function makeOneShotContextRecord(): ComposerContextRecord {
+function makeOneShotContextRecord(): ComposerContextRecord {
   return {
     version: 1,
     contextId: ComposerContextId.make(ONE_SHOT_CONTEXT_KIND),

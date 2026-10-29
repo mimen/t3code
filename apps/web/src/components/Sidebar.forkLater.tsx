@@ -34,7 +34,6 @@ export function useLaterShelf<T extends ShelfThread>(
 export function LaterShelfHeader(props: {
   readonly shelf: ReturnType<typeof useLaterShelf>;
   readonly className: string;
-  readonly hostsUndoNotice: boolean;
 }) {
   const { shelf } = props;
   return (
@@ -43,7 +42,6 @@ export function LaterShelfHeader(props: {
       className={props.className}
       label="Later"
       count={shelf.later.length}
-      hostsUndoNotice={props.hostsUndoNotice}
       toggle={{ expanded: shelf.expanded, onToggle: shelf.toggle }}
     />
   );
