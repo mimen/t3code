@@ -392,6 +392,68 @@ it.effect("rejects an unknown organize target instead of archiving the calling t
   );
 });
 
+it.effect("rejects an unknown thread target instead of changing the calling thread", () => {
+  const dispatched: Array<unknown> = [];
+  const calls = [
+    {
+      name: "t3_thread_transfer",
+      arguments: {
+        action: "merge_back",
+        threadIds: ["other-thread"],
+        targetThreadId: "target-thread",
+      },
+    },
+    {
+      name: "t3_queue",
+      arguments: { action: "cancel", threadIds: ["other-thread"], queuedRunId: "run-1" },
+    },
+    {
+      name: "t3_thread_configure",
+      arguments: {
+        threadIds: ["other-thread"],
+        modelSelection: { instanceId: "codex", model: "gpt" },
+      },
+    },
+  ] as const;
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    for (const call of calls) {
+      const outcome = yield* server
+        .callTool(call)
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, client),
+          Effect.result,
+        );
+      expect(outcome, call.name).toMatchObject({
+        _tag: "Failure",
+        failure: { message: expect.stringContaining("Expected no excess property") },
+      });
+    }
+    expect(dispatched).toEqual([]);
+  }).pipe(
+    Effect.provide(
+      layerThreadToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) => Effect.succeed(McpToolAccessTestkit.liveThreadShell(id)),
+            getProjectThreadRecords: ({ threadId: id }) =>
+              Effect.succeed(
+                McpToolAccessTestkit.idleThreadProjection(McpToolAccessTestkit.liveThreadShell(id)),
+              ),
+            dispatch: (command) => {
+              dispatched.push(command);
+              return Effect.succeed({ sequence: 1 } as never);
+            },
+          }),
+        ),
+      ),
+    ),
+  );
+});
+
 it.effect("keeps unexpected handler defects private through the production registration", () =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;

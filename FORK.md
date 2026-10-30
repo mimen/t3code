@@ -65,3 +65,6 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `apps/web/src/components/threadActionMenu.logic.test.ts`                  | later-shelf: expects Later disabled without permission                                                                |
 | `apps/web/src/components/threadActionMenu.logic.ts`                       | later-shelf: Later sits right after Snooze in the thread menu                                                         |
 | `apps/web/vite.config.ts`                                                 | space-safe-alias: `NodeURL.fileURLToPath` for the fonts-cjk alias so a checkout path with a space resolves            |
+| `apps/server/src/mcp/toolkits/thread/tools.ts`                            | strict-thread-target: unknown keys must not retarget a caller-default write                                           |
+| `apps/server/src/mcp/toolkits/core.test.ts`                               | strict-thread-target: merge, cancel, and model change with `threadIds` stay off the caller                            |
+| `apps/server/src/mcp/toolkits/orchestrator/tools.ts`                      | strict-thread-target: `t3_thread_update` rejects an unknown thread key                                                |

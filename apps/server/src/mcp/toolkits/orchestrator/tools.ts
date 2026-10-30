@@ -263,6 +263,7 @@ const ThreadUpdateTool = Tool.make("t3_thread_update", {
   dependencies: threadMetadataDependencies,
 })
   .annotate(Tool.Title, "Update T3 thread metadata")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, false);
 

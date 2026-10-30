@@ -106,7 +106,9 @@ const QueueTool = Tool.make("t3_queue", {
     queueEntry,
     OrchestrationV2DispatchCommandResult,
   ]),
-}).annotate(Tool.Destructive, true);
+})
+  .annotate(Tool.Strict, true)
+  .annotate(Tool.Destructive, true);
 
 const question = Schema.Struct({
   id: Schema.String,
@@ -141,6 +143,7 @@ const PendingRequestTool = Tool.make("t3_pending_request", {
     OrchestrationV2DispatchCommandResult,
   ]),
 })
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 
@@ -160,7 +163,9 @@ const ThreadConfigureTool = Tool.make("t3_thread_configure", {
     modelSelection: Schema.optional(ModelSelection),
   }),
   success: Schema.Union([threadConfiguration, OrchestrationV2DispatchCommandResult]),
-}).annotate(Tool.Destructive, true);
+})
+  .annotate(Tool.Strict, true)
+  .annotate(Tool.Destructive, true);
 
 const ThreadTransferTool = Tool.make("t3_thread_transfer", {
   ...commandTool,
@@ -187,7 +192,9 @@ const ThreadTransferTool = Tool.make("t3_thread_transfer", {
       ),
     }),
   ]),
-}).annotate(Tool.Destructive, true);
+})
+  .annotate(Tool.Strict, true)
+  .annotate(Tool.Destructive, true);
 
 const ThreadSearchTool = Tool.make("t3_thread_search", {
   ...commandTool,
