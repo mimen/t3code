@@ -89,7 +89,7 @@ it.effect.each([
     });
     const browser = ServerBrowser.ServerBrowser.of({
       clearProfile: () => Effect.void,
-      reportProfiles: () => Effect.void,
+      profileReporter: Effect.succeed(() => Effect.void),
       openDownload: () => Effect.succeedNone,
       answerFileChooser: () => Effect.succeed(false),
       attachViewer: (input) =>
@@ -164,7 +164,7 @@ it.effect("sends replies ahead of stale frames and only the newest frame after a
     });
     const browser = ServerBrowser.ServerBrowser.of({
       clearProfile: () => Effect.void,
-      reportProfiles: () => Effect.void,
+      profileReporter: Effect.succeed(() => Effect.void),
       openDownload: () => Effect.succeedNone,
       answerFileChooser: () => Effect.succeed(false),
       attachViewer: () => Effect.succeed({ output, input: () => Effect.void }),
@@ -235,7 +235,7 @@ it.effect.each([
     let attachments = 0;
     const browser = ServerBrowser.ServerBrowser.of({
       clearProfile: () => Effect.void,
-      reportProfiles: () => Effect.void,
+      profileReporter: Effect.succeed(() => Effect.void),
       openDownload: () => Effect.succeedNone,
       answerFileChooser: () => Effect.succeed(false),
       attachViewer: () => {
@@ -276,7 +276,7 @@ it.effect("serves a tab's download only to an authorized session", () =>
     const requests: Array<unknown> = [];
     const browser = ServerBrowser.ServerBrowser.of({
       clearProfile: () => Effect.void,
-      reportProfiles: () => Effect.void,
+      profileReporter: Effect.succeed(() => Effect.void),
       openDownload: (input) =>
         Effect.sync(() => {
           requests.push(input);
@@ -324,7 +324,7 @@ it.effect("passes uploaded files to the page's open picker and needs operate sco
     const answers: Array<{ chooserId: string; files: Array<{ name: string; text: string }> }> = [];
     const browser = ServerBrowser.ServerBrowser.of({
       clearProfile: () => Effect.void,
-      reportProfiles: () => Effect.void,
+      profileReporter: Effect.succeed(() => Effect.void),
       openDownload: () => Effect.succeedNone,
       answerFileChooser: (input) =>
         Effect.sync(() => {
@@ -393,7 +393,7 @@ it.effect.each([
   Effect.gen(function* () {
     const browser = ServerBrowser.ServerBrowser.of({
       clearProfile: () => Effect.void,
-      reportProfiles: () => Effect.void,
+      profileReporter: Effect.succeed(() => Effect.void),
       openDownload: () => Effect.succeedNone,
       answerFileChooser: () => Effect.succeed(false),
       attachViewer: () => Effect.fail(new ServerBrowser.ServerBrowserLaunchError({ cause: error })),
