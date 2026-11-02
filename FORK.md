@@ -53,6 +53,7 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `packages/client-runtime/src/state/threadSettled.ts`                      | someday-snooze: adds the Later preset, its wake label, and the shelf split export                                     |
 | `packages/client-runtime/src/state/threadSnoozed.test.ts`                 | someday-snooze: upstream preset cases filter out the Later preset                                                     |
 | `apps/mobile/src/features/threads/ThreadDetailScreen.tsx`                 | someday-snooze: "Saved for later" instead of a countdown                                                              |
+| `apps/web/src/components/chat/useThreadLifecycle.tsx`                     | someday-snooze: thread status line reads "Saved for later" instead of a countdown                                     |
 | `apps/web/src/components/Sidebar.tsx`                                     | later-shelf: splits Later threads out of Snoozed, renders their shelf, and adds Later to the bulk menu                |
 | `apps/web/src/components/Sidebar.logic.ts`                                | later-shelf: `later-header` marker, a snoozed slot that takes no drops                                                |
 | `apps/web/src/components/Sidebar.drag.ts`                                 | later-shelf: shelf header list and drag projection hook                                                               |
