@@ -310,6 +310,7 @@ const LinkPullRequestTool = Tool.make("link_pull_request", {
   dependencies,
 })
   .annotate(Tool.Title, "Link pull request to thread")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
@@ -328,6 +329,7 @@ const LinkPullRequestsTool = Tool.make("link_pull_requests", {
   dependencies,
 })
   .annotate(Tool.Title, "Link pull requests to thread")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
@@ -342,6 +344,7 @@ const UnlinkPullRequestTool = Tool.make("unlink_pull_request", {
   dependencies,
 })
   .annotate(Tool.Title, "Unlink pull request from thread")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, true)
@@ -360,6 +363,7 @@ const UnlinkPullRequestsTool = Tool.make("unlink_pull_requests", {
   dependencies,
 })
   .annotate(Tool.Title, "Unlink pull requests by state")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, true)
@@ -377,6 +381,7 @@ const ListThreadPullRequestsTool = Tool.make("list_thread_pull_requests", {
   dependencies,
 })
   .annotate(Tool.Title, "List thread pull requests")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
@@ -391,6 +396,7 @@ const WatchPullRequestTool = Tool.make("watch_pull_request", {
   dependencies,
 })
   .annotate(Tool.Title, "Watch pull request")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
@@ -405,6 +411,7 @@ const UnwatchPullRequestTool = Tool.make("unwatch_pull_request", {
   dependencies,
 })
   .annotate(Tool.Title, "Stop watching pull request")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)

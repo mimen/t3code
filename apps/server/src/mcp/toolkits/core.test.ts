@@ -1089,6 +1089,66 @@ it.effect("only the caller that prepared a pending upload can discard it", () =>
   ),
 );
 
+it.effect("rejects an unknown attachment target instead of sending to the calling thread", () => {
+  const read: Array<string> = [];
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const outcome = yield* server
+      .callTool({
+        name: "t3_thread_send_attachments",
+        arguments: {
+          threadIds: ["other-thread"],
+          attachments: [
+            {
+              type: "image",
+              id: "owned-image",
+              name: "shot.png",
+              mimeType: "image/png",
+              sizeBytes: 4,
+            },
+          ],
+        },
+      })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+        Effect.result,
+      );
+    expect(read).toEqual([]);
+    expect(outcome).toMatchObject({
+      _tag: "Failure",
+      failure: { message: expect.stringContaining("Expected no excess property") },
+    });
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerAttachmentToolkit.pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) => Effect.succeed(McpToolAccessTestkit.liveThreadShell(id)),
+            getProjectThreadRecords: ({ threadId: id }) => {
+              read.push(id);
+              return Effect.succeed(
+                McpToolAccessTestkit.idleThreadProjection(McpToolAccessTestkit.liveThreadShell(id)),
+              );
+            },
+          }),
+        ),
+        Layer.provide(ServerSecretStore.layer),
+        Layer.provide(
+          ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-attachment-target-" }),
+        ),
+        Layer.provide(
+          DocumentText.layer.pipe(
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          ),
+        ),
+        Layer.provide(NodeCrypto.layer),
+      ),
+    ),
+  );
+});
+
 it.effect(
   "t3_thread_list settled:false with an empty statuses list lists the unsettled threads",
   () => {

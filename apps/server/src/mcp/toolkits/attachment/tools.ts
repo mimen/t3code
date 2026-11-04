@@ -64,6 +64,7 @@ const AttachmentSendTool = Tool.make("t3_thread_send_attachments", {
     status: OrchestrationV2RunStatus,
   }),
 })
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 export const AttachmentToolkit = Toolkit.make(

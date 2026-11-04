@@ -81,6 +81,7 @@ const WorktreeListTool = Tool.make("t3_worktree_list", {
     GitWorkflowService.GitWorkflowService,
   ],
 })
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 export const WorktreeToolkit = Toolkit.make(

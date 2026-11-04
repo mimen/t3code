@@ -69,3 +69,6 @@ Releases are built from `main` on the Mac Mini; installed fork apps pick them up
 | `apps/server/src/mcp/toolkits/thread/tools.ts`                            | strict-thread-target: unknown keys must not retarget a caller-default write                                           |
 | `apps/server/src/mcp/toolkits/core.test.ts`                               | strict-thread-target: merge, cancel, and model change with `threadIds` stay off the caller                            |
 | `apps/server/src/mcp/toolkits/orchestrator/tools.ts`                      | strict-thread-target: `t3_thread_update` rejects an unknown thread key                                                |
+| `apps/server/src/mcp/toolkits/attachment/tools.ts`                        | strict-thread-target: `t3_thread_send_attachments` rejects an unknown thread key                                      |
+| `apps/server/src/mcp/toolkits/pullRequests/tools.ts`                      | strict-thread-target: link, unlink, list, and watch reject an unknown thread key                                      |
+| `apps/server/src/mcp/toolkits/worktree/tools.ts`                          | strict-thread-target: `t3_worktree_list` rejects an unknown thread key                                                |
