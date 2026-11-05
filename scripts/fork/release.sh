@@ -30,7 +30,7 @@ git -C "$root" fetch -q origin
 git -C "$root" fetch -q upstream 'refs/tags/v*:refs/tags/v*'
 sha="$(git -C "$root" rev-parse --verify "$ref^{commit}")"
 
-latest="$(gh release list -R "$REPO" --limit 1 --json tagName --jq '.[0].tagName // ""')"
+latest="$(gh release list -R "$REPO" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')"
 prev_sha="$([[ -n "$latest" ]] && gh release view "$latest" -R "$REPO" --json targetCommitish --jq .targetCommitish || true)"
 if [[ "$prev_sha" == "$sha" ]]; then
   echo "release: $latest already targets $sha"
