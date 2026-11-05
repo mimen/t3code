@@ -3,6 +3,7 @@ import type {
   ClientSurface,
   OrchestrationV2MessageSender,
 } from "@t3tools/contracts";
+import { HostnameLookupError } from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -43,7 +44,10 @@ export const resolveMessageSender = Effect.fn("resolveMessageSender")(function* 
   const sender = messageSenderFromConnection({ client, surface, remoteAddress, proxied });
   if (sender.sameMachine || proxied || remoteAddress === undefined) return sender;
   // Bounded because it delays the socket upgrade; an unresolved address just omits the name.
-  const hostName = yield* Effect.tryPromise(() => NodeDnsPromises.reverse(remoteAddress)).pipe(
+  const hostName = yield* Effect.tryPromise({
+    try: () => NodeDnsPromises.reverse(remoteAddress),
+    catch: (cause) => new HostnameLookupError({ hostname: remoteAddress, cause }),
+  }).pipe(
     Effect.timeoutOption("300 millis"),
     Effect.map((names) => Option.getOrUndefined(names)?.[0]?.replace(/\.$/, "")),
     Effect.orElseSucceed(() => undefined),

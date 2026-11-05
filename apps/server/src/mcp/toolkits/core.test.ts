@@ -1135,7 +1135,7 @@ it.effect("rejects an unknown attachment target instead of sending to the callin
             },
           }),
         ),
-        Layer.provide(ServerSecretStore.layer),
+        Layer.provide(AssetSigner.layer.pipe(Layer.provideMerge(ServerSecretStore.layer))),
         Layer.provide(
           ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-attachment-target-" }),
         ),
