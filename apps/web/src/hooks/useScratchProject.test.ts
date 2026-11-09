@@ -20,6 +20,7 @@ function actions(
   primary: EnvironmentId | null,
   localRoot: string | null,
   remoteRoot: string | null = "/remote/scratch",
+  remembered: EnvironmentId | null = null,
 ) {
   const environments = [
     scratchEnvironment(local, localRoot),
@@ -31,6 +32,7 @@ function actions(
     primaryEnvironmentId: () => primary,
     registry: AtomRegistry.make(),
     handleNewThread: async () => null,
+    rememberedEnvironmentId: () => remembered,
   });
 }
 
@@ -45,5 +47,12 @@ describe("scratchEnvironmentId", () => {
     expect(actions(null, null).scratchEnvironmentId(remote)).toBe(remote);
     expect(actions(null, null, null).scratchEnvironmentId(remote)).toBe(other);
     expect(actions(local, null).scratchEnvironmentId(null)).toBeNull();
+  });
+
+  it("prefers the remembered machine while it still offers a scratch root", () => {
+    expect(actions(local, "/local/scratch", undefined, remote).scratchEnvironmentId(null)).toBe(
+      remote,
+    );
+    expect(actions(local, "/local/scratch", null, remote).scratchEnvironmentId(null)).toBe(local);
   });
 });

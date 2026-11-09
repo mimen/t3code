@@ -20,6 +20,7 @@ import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { type EnvironmentPresentation, useEnvironmentProviders } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import type { DraftSessionState } from "../../composerDraftStore";
+import { rememberScratchMachine } from "../../hooks/useScratchProject.forkMachine";
 
 interface DraftEnvironmentRoutingInput {
   readonly draftId: DraftId | null;
@@ -223,6 +224,7 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
         return;
       const projectRef = scopeProjectRef(target.environmentId, project.id);
       if (activeProjectIsScratch) {
+        rememberScratchMachine(target.environmentId); // fork: scratch-machine
         setLogicalProjectDraftThreadId(
           deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings),
           projectRef,

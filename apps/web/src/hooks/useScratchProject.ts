@@ -18,6 +18,7 @@ import {
   usePrimaryEnvironmentId,
 } from "~/state/environments";
 import { projectEnvironment } from "~/state/projects";
+import { readRememberedScratchMachine } from "./useScratchProject.forkMachine";
 import { type NewThreadHandler, useNewThreadHandler } from "./useHandleNewThread";
 
 function reportScratchFailure(title: string, error: unknown) {
@@ -39,6 +40,7 @@ export function createScratchProjectActions(input: {
   readonly primaryEnvironmentId: () => EnvironmentId | null;
   readonly registry: AtomRegistry.AtomRegistry;
   readonly handleNewThread: NewThreadHandler;
+  readonly rememberedEnvironmentId?: () => EnvironmentId | null;
 }) {
   const scratchWorkspaceRootFor = (environmentId: EnvironmentId | null): string | null => {
     let environment: ScratchEnvironment | undefined;
@@ -50,6 +52,9 @@ export function createScratchProjectActions(input: {
 
   // The primary (local) environment wins; `fallback` only applies when it offers no scratch root.
   const scratchEnvironmentId = (fallback: EnvironmentId | null): EnvironmentId | null => {
+    // fork: scratch-machine
+    const remembered = (input.rememberedEnvironmentId ?? readRememberedScratchMachine)();
+    if (remembered !== null && scratchWorkspaceRootFor(remembered) !== null) return remembered;
     const primary = input.primaryEnvironmentId();
     if (primary !== null && scratchWorkspaceRootFor(primary) !== null) return primary;
     if (fallback !== null && scratchWorkspaceRootFor(fallback) !== null) return fallback;
