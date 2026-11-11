@@ -1304,6 +1304,23 @@ effectIt.effect.each([
     }),
 );
 
+effectIt.effect("keeps a side-chat slash command at the start of the prompt", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "/review the diff",
+      sideChat: { contextRun: "current" },
+    });
+    harness.tryHandlePromptCommand.mockImplementation(() => Effect.succeed(false));
+
+    yield* harness.start;
+
+    expect(harness.startTurn.mock.calls.map(([turn]) => turn.message.text)).toEqual([
+      "/review the diff",
+    ]);
+    expect(harness.projection().contextHandoffs[0]?.delivery).toBeUndefined();
+  }),
+);
+
 effectIt.effect.each([
   { nativeForkFrom: "idle", forks: true, transferStatus: "consumed", handoffIds: [] },
   {

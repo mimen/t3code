@@ -27,6 +27,7 @@ Releases are built from `main` on the Mac Mini; installed fork apps download eac
 | `apps/desktop/src/app/DesktopClerk.test.ts`                               | expects the fork's profile directory                                                                                  |
 | `packages/shared/package.json`                                            | one-shot: `./forkOneShot` subpath export                                                                              |
 | `apps/server/src/orchestration-v2/ProviderTurnStartService.ts`            | one-shot: prepends the hidden instruction to the provider text; device-sender: carried upstream #20112, drop on merge |
+| `apps/server/src/orchestration-v2/ProviderTurnStartService.test.ts`       | slash-context: a side-chat slash command stays at the prompt start                                                    |
 | `apps/server/src/server.ts`                                               | one-shot: starts `ForkOneShotSettleReactor`                                                                           |
 | `packages/contracts/src/orchestratorMcp.ts`                               | one-shot: `settleWhenDone` on `create_threads` entries                                                                |
 | `apps/server/src/mcp/OrchestratorMcpService.ts`                           | one-shot: `create_threads` attaches the record                                                                        |
@@ -73,6 +74,6 @@ Releases are built from `main` on the Mac Mini; installed fork apps download eac
 | `apps/server/src/mcp/toolkits/attachment/tools.ts`                        | strict-thread-target: `t3_thread_send_attachments` rejects an unknown thread key                                      |
 | `apps/server/src/mcp/toolkits/pullRequests/tools.ts`                      | strict-thread-target: link, unlink, list, and watch reject an unknown thread key                                      |
 | `apps/server/src/mcp/toolkits/worktree/tools.ts`                          | strict-thread-target: `t3_worktree_list` rejects an unknown thread key                                                |
-| `apps/web/src/hooks/useScratchProject.ts` | scratch-machine: a remembered machine wins over the primary environment for no-project threads |
-| `apps/web/src/hooks/useScratchProject.test.ts` | scratch-machine: injects the remembered machine and covers its precedence |
-| `apps/web/src/components/chat/useDraftEnvironmentRouting.ts` | scratch-machine: switching a no-project draft's machine remembers it |
+| `apps/web/src/hooks/useScratchProject.ts`                                 | scratch-machine: a remembered machine wins over the primary environment for no-project threads                        |
+| `apps/web/src/hooks/useScratchProject.test.ts`                            | scratch-machine: injects the remembered machine and covers its precedence                                             |
+| `apps/web/src/components/chat/useDraftEnvironmentRouting.ts`              | scratch-machine: switching a no-project draft's machine remembers it                                                  |

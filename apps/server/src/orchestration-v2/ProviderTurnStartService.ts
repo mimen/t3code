@@ -850,9 +850,9 @@ export const layer: Layer.Layer<
         ),
         message.context,
       );
-      // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
+      // fork: slash-context. Adapters parse a slash command from the start of the prompt.
+      const slashCommand = userText.trimStart().startsWith("/");
       const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
-      const goalCommand = goalDriver && parseGoalCommand(message) !== null;
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
       const noteContinuation = isRestartNoteContinuation(
         run,
@@ -1292,7 +1292,7 @@ export const layer: Layer.Layer<
             handoffs: [...handoffs, ...resumedRetryHandoff],
             providerThread: { ...resumed.success, id: providerThread.id },
             budget: context.budget,
-            deferInline: isCompactionCommandMessage(message) || goalCommand,
+            deferInline: isCompactionCommandMessage(message) || slashCommand,
             alreadyDeliveredItemIds: context.deliveredItemIds,
             persist: () => Effect.void,
           }).pipe(
@@ -1587,7 +1587,7 @@ export const layer: Layer.Layer<
         function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
           const delivery = yield* deliverContextHandoffs({
             handoffs: [...effectiveHandoffs, ...retryHandoff],
-            deferInline: compact || goalCommand,
+            deferInline: compact || slashCommand,
             providerThread: runningProviderThread,
             budget,
             alreadyDeliveredItemIds: deliveredItemIds,
@@ -1606,7 +1606,7 @@ export const layer: Layer.Layer<
           const start = compact ? session.compactThread! : session.startTurn;
           // Like history, the side chat context waits for a turn that sends a prompt.
           const sideChatContext =
-            sideChatHandoff === undefined || compact || goalCommand
+            sideChatHandoff === undefined || compact || slashCommand
               ? ""
               : sideChatHandoff.summaryText;
           const context = [delivery.context, sideChatContext, restartNote]
@@ -1617,7 +1617,7 @@ export const layer: Layer.Layer<
             ...(noteContinuation ? promptedInput : turnInput),
             message: {
               ...turnInput.message,
-              text: goalCommand ? userText : withInlineContext(context, userText),
+              text: slashCommand ? userText : withInlineContext(context, userText),
             },
           }).pipe(
             // Clear pending handoff markers for refused prompts so the next turn retains the native session.
