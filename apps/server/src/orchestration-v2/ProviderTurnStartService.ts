@@ -844,13 +844,14 @@ export const layer: Layer.Layer<
         ),
         message.context,
       );
-      // fork: slash-context. Adapters parse a slash command from the start of the prompt.
-      const slashCommand = userText.trimStart().startsWith("/");
       const goalDriver =
         session.driver === "codex" ||
         session.driver === "claudeAgent" ||
         (session.driver === "opencode" &&
           session.providerSession.capabilities.turns.supportsNativeGoals === true);
+      // fork: slash-context. Adapters parse a slash command from the start of the prompt.
+      const slashCommand =
+        userText.trimStart().startsWith("/") && (goalDriver || parseGoalCommand(message) === null);
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
       const noteContinuation = isRestartNoteContinuation(
         run,
