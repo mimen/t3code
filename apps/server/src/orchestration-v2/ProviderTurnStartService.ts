@@ -239,13 +239,16 @@ export const layer: Layer.Layer<
         typeof RunExecutionService.selectInheritedBackgroundTurnItems
       >;
     }) => {
+      const isCurrentAttemptIn = (statuses: ReadonlyArray<OrchestrationV2Run["status"]>) =>
+        projectionStore
+          .getRun(input.threadId, input.runId)
+          .pipe(
+            Effect.map(
+              (run) => run?.activeAttemptId === input.attemptId && statuses.includes(run.status),
+            ),
+          );
       const isCurrentAttemptInStatus = (expectedStatus: OrchestrationV2Run["status"]) =>
-        projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
-          Effect.map((current) => {
-            const run = current.runs.find((candidate) => candidate.id === input.runId);
-            return run?.activeAttemptId === input.attemptId && run.status === expectedStatus;
-          }),
-        );
+        isCurrentAttemptIn([expectedStatus]);
       return {
         isCurrentAttemptInStatus,
         loadInheritedBackgroundTurnItems: () =>
@@ -262,16 +265,7 @@ export const layer: Layer.Layer<
             Effect.catchCause(() => Effect.succeed(input.inheritedBackgroundTurnItems)),
           ),
         shouldStartProviderTurn: () => isCurrentAttemptInStatus("running"),
-        shouldFinalizeRun: () =>
-          projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
-            Effect.map((current) => {
-              const run = current.runs.find((candidate) => candidate.id === input.runId);
-              return (
-                run?.activeAttemptId === input.attemptId &&
-                (run.status === "starting" || run.status === "running")
-              );
-            }),
-          ),
+        shouldFinalizeRun: () => isCurrentAttemptIn(["starting", "running"]),
         hasUnpairedRunInterruptRequest: () =>
           projectionStore
             .hasUnpairedRunInterruptRequest(
@@ -852,7 +846,11 @@ export const layer: Layer.Layer<
       );
       // fork: slash-context. Adapters parse a slash command from the start of the prompt.
       const slashCommand = userText.trimStart().startsWith("/");
-      const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
+      const goalDriver =
+        session.driver === "codex" ||
+        session.driver === "claudeAgent" ||
+        (session.driver === "opencode" &&
+          session.providerSession.capabilities.turns.supportsNativeGoals === true);
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
       const noteContinuation = isRestartNoteContinuation(
         run,
