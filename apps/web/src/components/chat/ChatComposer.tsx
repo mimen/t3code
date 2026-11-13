@@ -208,6 +208,7 @@ import {
   ComposerQueuedAttachmentRow,
   ComposerRestingImagePreviews,
 } from "./ComposerAttachmentStrip";
+import { FORK_QUESTIONS_PROMPT, ForkQuestionsButton } from "./ForkQuestionsButton"; // fork: questions-button
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
@@ -2229,6 +2230,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   };
   const submitCitationAndSendStable = useStableCallback(submitCitationAndSend);
+  // fork: questions-button
+  const sendQuestionsPrompt = () => {
+    promptRef.current = FORK_QUESTIONS_PROMPT;
+    setPrompt(FORK_QUESTIONS_PROMPT);
+    submitCitationAndSend();
+  };
   // A question took the editor while a citation comment was
   // unsaved. Keep the comment in the prompt that comes back afterward.
   const saveCitationDraftToPrompt = (replacedValue: string, savedValue: string) => {
@@ -3635,6 +3642,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               >
                 {composerAttachButton && !dictationTakesFooter ? (
                   <div className="me-2">{composerAttachButton}</div>
+                ) : null}
+                {/* fork: questions-button */}
+                {!activePendingProgress && !dictationTakesFooter ? (
+                  <div className="me-2">
+                    <ForkQuestionsButton
+                      disabled={composerSendState.hasSendableContent || isSendBusy}
+                      onSend={sendQuestionsPrompt}
+                    />
+                  </div>
                 ) : null}
                 <div
                   data-chat-composer-actions="right"

@@ -77,3 +77,4 @@ Releases are built from `main` on the Mac Mini; installed fork apps download eac
 | `apps/web/src/hooks/useScratchProject.ts`                                 | scratch-machine: a remembered machine wins over the primary environment for no-project threads                        |
 | `apps/web/src/hooks/useScratchProject.test.ts`                            | scratch-machine: injects the remembered machine and covers its precedence                                             |
 | `apps/web/src/components/chat/useDraftEnvironmentRouting.ts`              | scratch-machine: switching a no-project draft's machine remembers it                                                  |
+| `apps/web/src/components/chat/ChatComposer.tsx`                           | questions-button: renders the `/q` button beside attach and sends it through the composer's submit path               |
