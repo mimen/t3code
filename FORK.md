@@ -43,6 +43,7 @@ Releases are built from `main` on the Mac Mini; installed fork apps download eac
 | `apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts` | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/orchestration-v2/ThreadLaunchService.ts`                 | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/orchestration-v2/ThreadManagementService.ts`             | device-sender: carried upstream #20112, drop on merge                                                                 |
+| `apps/server/src/device/DeviceHubProxy.test.ts`                           | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/preview/ServerBrowserStream.test.ts`                     | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/ws.ts`                                                   | device-sender: carried upstream #20112, drop on merge                                                                 |
 | `apps/server/src/ws.test.ts`                                              | device-sender: carried upstream #20112, drop on merge                                                                 |

@@ -56,6 +56,7 @@ const fixture = (
                   sessionId: AuthSessionId.make("test"),
                   subject: "test",
                   method: "bearer-access-token",
+                  client: { deviceType: "unknown" },
                   scopes,
                 }),
         }),
