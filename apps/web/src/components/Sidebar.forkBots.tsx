@@ -1,6 +1,6 @@
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId, ForkBot } from "@t3tools/contracts";
+import type { EnvironmentId, ForkBot, ScopedThreadRef } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { T, useGT } from "gt-react";
 import { BotIcon, EyeIcon, EyeOffIcon, HistoryIcon } from "lucide-react";
@@ -42,29 +42,35 @@ export function useBotsSection(
   };
 }
 
+const DOCK_LIMIT = 4;
+
+/** The tray's bottom edge; the rounded panel replaces a divider line. */
 export function BotsEnd() {
   return (
     <SortableSidebarMarker
       marker="bots-end"
       data-testid="sidebar-bots-end"
-      className="pointer-events-none mx-2.5 flex h-3 items-center"
-    >
-      <div aria-hidden className="h-px flex-1 bg-sidebar-border" />
-    </SortableSidebarMarker>
+      className="pointer-events-none mb-2 h-1.5 rounded-b-lg bg-sidebar-control-surface"
+    />
   );
 }
 
-export function BotsHeader(props: { readonly section: ReturnType<typeof useBotsSection> }) {
+export function BotsHeader(props: {
+  readonly section: ReturnType<typeof useBotsSection>;
+  readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
+}) {
   const { section } = props;
   const gt = useGT();
+  const label = gt("Bots", { $context: "sidebar section" });
   const showAllLabel = section.showAll
     ? gt("Hide quiet bots", { $context: "sidebar bots section" })
     : gt("Show all bots", { $context: "sidebar bots section" });
+  const dock = section.expanded ? [] : section.needsYou;
   return (
     <SortableSidebarMarker
       marker="bots-header"
       data-testid="sidebar-bots-header"
-      className="relative mx-0.5 flex h-8 items-center"
+      className="relative -mb-px flex h-[calc(--spacing(8)+1px)] items-center rounded-t-lg bg-sidebar-control-surface px-0.5 pb-px"
     >
       <CollapsibleSectionHeader
         data-sidebar-row="shelf:bots"
@@ -74,12 +80,28 @@ export function BotsHeader(props: { readonly section: ReturnType<typeof useBotsS
         accessory={
           <span className="inline-flex items-center gap-1.5 font-normal tabular-nums">
             {section.working ? <Spinner size="xs" /> : null}
-            {section.needsYouCount}
+            {section.expanded ? section.needsYouCount : null}
           </span>
         }
       >
-        {gt("Bots", { $context: "sidebar section" })}
+        {label}
       </CollapsibleSectionHeader>
+      {dock.length > 0 ? (
+        // Siblings of the toggle, not inside it; the hidden label lines the chips up after "Bots".
+        <div className="pointer-events-none absolute inset-y-0 left-0.5 flex items-center gap-1 px-2 text-xs font-medium">
+          <span aria-hidden className="invisible me-1">
+            {label}
+          </span>
+          {dock.slice(0, DOCK_LIMIT).map((thread) => (
+            <BotDockChip key={thread.id} thread={thread} onOpenThread={props.onOpenThread} />
+          ))}
+          {dock.length > DOCK_LIMIT ? (
+            <span className="text-sidebar-muted-foreground tabular-nums">
+              +{dock.length - DOCK_LIMIT}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -97,6 +119,39 @@ export function BotsHeader(props: { readonly section: ReturnType<typeof useBotsS
         <TooltipPopup side="top">{showAllLabel}</TooltipPopup>
       </Tooltip>
     </SortableSidebarMarker>
+  );
+}
+
+function BotDockChip(props: {
+  readonly thread: Pick<EnvironmentThreadShell, "environmentId" | "id" | "botId" | "title">;
+  readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
+}) {
+  const { thread } = props;
+  const bot = useForkBot(thread.environmentId, thread.botId);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={thread.title}
+            onClick={() => props.onOpenThread(scopeThreadRef(thread.environmentId, thread.id))}
+            className="pointer-events-auto relative inline-flex size-5.5 shrink-0 cursor-pointer items-center justify-center rounded-md bg-card ring-1 ring-inset ring-sidebar-border/70 hover:bg-sidebar-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          />
+        }
+      >
+        <ForkBotIcon bot={bot} className="size-3" />
+        <span
+          aria-hidden
+          className={cn(
+            "absolute -top-0.5 -right-0.5 size-1.5 rounded-full ring-2 ring-sidebar-control-surface",
+            bot?.color === undefined && "bg-primary",
+          )}
+          style={bot?.color === undefined ? undefined : { backgroundColor: bot.color }}
+        />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{thread.title}</TooltipPopup>
+    </Tooltip>
   );
 }
 

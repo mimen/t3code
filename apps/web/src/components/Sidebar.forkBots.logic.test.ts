@@ -103,6 +103,12 @@ describe("resolveBotsSection", () => {
     ]);
   });
 
+  it("lists every bot that needs the user for the collapsed dock, even with no rows shown", () => {
+    const section = resolveBotsSection(all, { ...closed, expanded: false });
+    expect(section.rows).toEqual([]);
+    expect(section.needsYou.map((thread) => thread.title)).toEqual(["Completed", "Unread"]);
+  });
+
   it("gives each row the state its one status slot shows", () => {
     const states = resolveBotsSection(all, { ...closed, showAll: true }).rows.map(
       ({ thread, state }) => [thread.title, state],
