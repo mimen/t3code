@@ -2,7 +2,7 @@ import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settl
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./threadActionMenu.logic";
-import { forkRoleFromMenuId } from "./threadActionMenu.forkRoles";
+import { forkRoleMenuAction } from "./threadActionMenu.forkRoles";
 
 const list = {
   directory: "/roles",
@@ -36,11 +36,18 @@ const roleItem = (overrides: Partial<ThreadActionMenuState>) =>
   buildThreadActionMenuItems({ ...state, ...overrides }).find((item) => item.id === "role");
 
 describe("Role menu item", () => {
-  it("lists every role, with no way to clear a role that is not set", () => {
+  it("lists every role and, for a thread with no role, offers to make it one", () => {
     expect(roleItem({})?.children).toEqual([
       { id: "role:set:needs-you", label: "Needs you", checked: false },
       { id: "role:set:coordinator", label: "Coordinator", checked: false },
+      { id: "role:make", label: "Make this thread a role…", separatorBefore: true },
     ]);
+  });
+
+  it("offers to make the first role when the directory is empty", () => {
+    expect(roleItem({ forkRoles: { current: null, list: { ...list, roles: [] } } })).toMatchObject({
+      children: [{ id: "role:make", separatorBefore: false }],
+    });
   });
 
   it("checks the current role and offers No role", () => {
@@ -51,7 +58,7 @@ describe("Role menu item", () => {
     expect(children.at(-1)).toMatchObject({ id: "role:none", label: "No role" });
   });
 
-  it("is disabled with a hint while loading, or without a roles directory, roles, or permission", () => {
+  it("is disabled with a hint while loading, or without a roles directory or permission", () => {
     expect(roleItem({ forkRoles: { current: null, list: null } })).toMatchObject({
       disabled: true,
       detail: "Loading roles…",
@@ -59,10 +66,6 @@ describe("Role menu item", () => {
     expect(
       roleItem({ forkRoles: { current: null, list: { directory: null, roles: [] } } }),
     ).toMatchObject({ disabled: true, detail: "Set a roles directory in Settings" });
-    expect(roleItem({ forkRoles: { current: null, list: { ...list, roles: [] } } })).toMatchObject({
-      disabled: true,
-      detail: "No roles in the roles directory",
-    });
     const readOnly = roleItem({ canOperate: false });
     expect(readOnly?.disabled).toBe(true);
     expect(readOnly?.children?.every((child) => child.disabled)).toBe(true);
@@ -76,10 +79,11 @@ describe("Role menu item", () => {
   });
 });
 
-describe("forkRoleFromMenuId", () => {
-  it("reads a role, No role, or nothing", () => {
-    expect(forkRoleFromMenuId("role:set:needs-you")).toBe("needs-you");
-    expect(forkRoleFromMenuId("role:none")).toBeNull();
-    expect(forkRoleFromMenuId("snooze:custom")).toBeUndefined();
+describe("forkRoleMenuAction", () => {
+  it("reads a role, No role, make a role, or nothing", () => {
+    expect(forkRoleMenuAction("role:set:needs-you")).toEqual({ kind: "set", roleId: "needs-you" });
+    expect(forkRoleMenuAction("role:none")).toEqual({ kind: "set", roleId: null });
+    expect(forkRoleMenuAction("role:make")).toEqual({ kind: "make" });
+    expect(forkRoleMenuAction("snooze:custom")).toBeUndefined();
   });
 });

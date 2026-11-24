@@ -7,17 +7,20 @@ import { createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 export function createForkRolesEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
   settingsValueAtom: (environmentId: EnvironmentId) => Atom.Atom<ServerSettings | null>,
+  /** The environment's assigned role ids, sorted and joined, so a newly written role file is fetched. */
+  roleIdsKeyAtom: (environmentId: EnvironmentId) => Atom.Atom<string>,
 ) {
-  const directoryAtom = Atom.family((environmentId: EnvironmentId) =>
-    Atom.make((get) => get(settingsValueAtom(environmentId))?.forkRolesDirectory ?? null).pipe(
-      Atom.withLabel(`environment-data:fork-roles:directory:${environmentId}`),
-    ),
+  const refreshKeyAtom = Atom.family((environmentId: EnvironmentId) =>
+    Atom.make((get) => {
+      const directory = get(settingsValueAtom(environmentId))?.forkRolesDirectory ?? "";
+      return `${directory}\n${get(roleIdsKeyAtom(environmentId))}`;
+    }).pipe(Atom.withLabel(`environment-data:fork-roles:refresh-key:${environmentId}`)),
   );
   return {
     list: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:fork-roles:list",
       tag: WS_METHODS.forkRolesList,
-      refreshTrigger: ({ environmentId }) => directoryAtom(environmentId),
+      refreshTrigger: ({ environmentId }) => refreshKeyAtom(environmentId),
     }),
   };
 }

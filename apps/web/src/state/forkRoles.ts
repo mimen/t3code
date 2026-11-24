@@ -5,23 +5,40 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { createForkRolesEnvironmentAtoms } from "@t3tools/client-runtime/state/fork-roles";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { AsyncResult } from "effect/reactivity";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { msg } from "gt-react";
 
-import type { ForkRoleMenuState } from "../components/threadActionMenu.forkRoles";
+import {
+  FORK_MAKE_ROLE_PROMPT,
+  forkRoleMenuAction,
+  type ForkRoleMenuState,
+} from "../components/threadActionMenu.forkRoles";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { m } from "../i18n/messages";
+import { newMessageId } from "../lib/utils";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { usePrimaryEnvironmentId } from "./environments";
 import { useEnvironmentQuery } from "./query";
 import { serverEnvironment } from "./server";
-import { threadEnvironment } from "./threads";
+import { environmentThreadShells, threadEnvironment } from "./threads";
 import { useOrchestrationCommand } from "./use-orchestration-command";
+
+const roleIdsKeyAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) => {
+    const ids = new Set<string>();
+    for (const thread of get(environmentThreadShells.threadShellsAtom)) {
+      if (thread.environmentId === environmentId && thread.roleId) ids.add(thread.roleId);
+    }
+    return [...ids].toSorted().join(",");
+  }),
+);
 
 const forkRolesEnvironment = createForkRolesEnvironmentAtoms(
   connectionAtomRuntime,
   serverEnvironment.settingsValueAtom,
+  roleIdsKeyAtom,
 );
 
 const rolesListAtom = (environmentId: EnvironmentId) =>
@@ -52,23 +69,49 @@ export function readForkRoleMenuState(
   return { current, list };
 }
 
-/** Sets or clears a thread's role and reports a failure as a toast. */
-export function useSetThreadRole() {
-  const run = useOrchestrationCommand(threadEnvironment.setRole, { reportFailure: false });
-  return async (target: ScopedThreadRef, roleId: string | null) => {
-    const result = await run({
-      environmentId: target.environmentId,
-      input: { threadId: target.threadId, roleId },
-    });
+/** Runs a Role submenu pick and reports a failure as a toast; false for any other menu id. */
+export function useForkRoleMenuHandler() {
+  const setRole = useOrchestrationCommand(threadEnvironment.setRole, { reportFailure: false });
+  const startTurn = useOrchestrationCommand(threadEnvironment.startTurn, { reportFailure: false });
+  return async (
+    target: ScopedThreadRef,
+    thread: Pick<EnvironmentThreadShell, "runtimeMode" | "interactionMode">,
+    menuId: string,
+  ) => {
+    const action = forkRoleMenuAction(menuId);
+    if (action === undefined) return false;
+    const { environmentId, threadId } = target;
+    const result =
+      action.kind === "set"
+        ? await setRole({ environmentId, input: { threadId, roleId: action.roleId } })
+        : await startTurn({
+            environmentId,
+            input: {
+              threadId,
+              message: {
+                messageId: newMessageId(),
+                role: "user",
+                text: FORK_MAKE_ROLE_PROMPT,
+                attachments: [],
+              },
+              runtimeMode: thread.runtimeMode,
+              interactionMode: thread.interactionMode,
+              dispatchMode: "queue",
+            },
+          });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: m(msg("Failed to change role")),
+          title:
+            action.kind === "set"
+              ? m(msg("Failed to change role"))
+              : m(msg("Failed to send {command}", { command: FORK_MAKE_ROLE_PROMPT })),
           description:
             thrownErrorMessage(squashAtomCommandFailure(result), m) ?? m(msg("An error occurred.")),
         }),
       );
     }
+    return true;
   };
 }
