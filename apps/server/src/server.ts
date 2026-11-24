@@ -1425,9 +1425,8 @@ const layerMakeServer = Layer.unwrap(
       Layer.provide(CloudLink.layer.pipe(Layer.provideMerge(ConnectReachability.layer))),
       Layer.provideMerge(layerRuntimeServices),
       Layer.provideMerge(
-        McpSessionRegistry.layer.pipe(
-          Layer.provide(ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer))),
-        ),
+        // fork: env-name. Layers memoize by reference; the bare layer here would shadow the named one.
+        McpSessionRegistry.layer.pipe(Layer.provide(layerServerEnvironment)),
       ),
       Layer.provide(layerActivation),
       Layer.provideMerge(
