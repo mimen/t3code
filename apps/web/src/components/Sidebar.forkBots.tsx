@@ -50,7 +50,7 @@ export function BotsEnd() {
     <SortableSidebarMarker
       marker="bots-end"
       data-testid="sidebar-bots-end"
-      className="pointer-events-none mb-2 h-1.5 rounded-b-lg bg-sidebar-control-surface"
+      className="pointer-events-none mb-2 h-px rounded-b-lg bg-sidebar-control-surface"
     />
   );
 }
@@ -70,7 +70,7 @@ export function BotsHeader(props: {
     <SortableSidebarMarker
       marker="bots-header"
       data-testid="sidebar-bots-header"
-      className="relative -mb-px flex h-[calc(--spacing(8)+1px)] items-center rounded-t-lg bg-sidebar-control-surface px-0.5 pb-px"
+      className="relative -mb-px flex items-center rounded-t-lg bg-sidebar-control-surface px-0.5 pt-0.5 pb-px"
     >
       <CollapsibleSectionHeader
         data-sidebar-row="shelf:bots"
@@ -88,7 +88,7 @@ export function BotsHeader(props: {
       </CollapsibleSectionHeader>
       {dock.length > 0 ? (
         // Siblings of the toggle, not inside it; the hidden label lines the chips up after "Bots".
-        <div className="pointer-events-none absolute inset-y-0 left-0.5 flex items-center gap-1 px-2 text-xs font-medium">
+        <div className="pointer-events-none absolute inset-x-0.5 top-0.5 bottom-px flex items-center gap-1 px-2 text-xs font-medium">
           <span aria-hidden className="invisible me-1">
             {label}
           </span>
