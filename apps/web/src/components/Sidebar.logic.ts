@@ -221,6 +221,7 @@ const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
 
 export type SidebarListMarker =
   | "roles-header" // fork: roles
+  | "roles-end" // fork: roles
   | "pinned-header"
   | "active-placeholder"
   | "settled-placeholder"

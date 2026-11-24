@@ -142,7 +142,7 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import { LaterShelfHeader, useLaterShelf } from "./Sidebar.forkLater"; // fork: later-shelf
 import { timedSnoozePresets } from "@t3tools/client-runtime/state/thread-settled"; // fork: later-shelf
 import { laterMenuItem } from "./threadActionMenu.forkLater"; // fork: later-shelf
-import { RolesHeader, SidebarRoleIcon, useRolesSection } from "./Sidebar.forkRoles"; // fork: roles
+import { RolesEnd, RolesHeader, SidebarRoleIcon, useRolesSection } from "./Sidebar.forkRoles"; // fork: roles
 import { splitRoleThreads } from "./Sidebar.forkRoles.logic"; // fork: roles
 import { readForkRoleMenuState, useSetThreadRole } from "../state/forkRoles"; // fork: roles
 import { forkRoleFromMenuId } from "./threadActionMenu.forkRoles"; // fork: roles
@@ -2025,6 +2025,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           "roles",
         ),
       );
+      items.push({ kind: "marker", marker: "roles-end" });
     }
     items.push({ kind: "marker", marker: "pinned-header" });
     const pinnedRows = rowsOf(pinnedThreads, "pinned");
@@ -3717,6 +3718,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         switch (item.marker) {
                           case "roles-header": // fork: roles
                             items.push(<RolesHeader key="roles-header" section={rolesSection} />);
+                            break;
+                          case "roles-end": // fork: roles
+                            items.push(<RolesEnd key="roles-end" />);
                             break;
                           case "pinned-header":
                             items.push(
