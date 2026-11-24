@@ -839,6 +839,7 @@ export type ServerConfigProviderStatusDeltasPayload =
 
 export const ServerConfigSettingsUpdatedPayload = Schema.Struct({
   settings: ServerSettings,
+  environmentLabel: Schema.optional(TrimmedNonEmptyString), // fork: env-name
 });
 export type ServerConfigSettingsUpdatedPayload = typeof ServerConfigSettingsUpdatedPayload.Type;
 

@@ -419,7 +419,22 @@ export const withLateConfigDiscovery = <E, R>(
           case "providerStatuses":
             return [{ ...current, providers: event.payload.providers }, [event]];
           case "settingsUpdated":
-            return [{ ...current, settings: event.payload.settings }, [event]];
+            return [
+              {
+                ...current,
+                settings: event.payload.settings,
+                // fork: env-name
+                ...(event.payload.environmentLabel === undefined
+                  ? {}
+                  : {
+                      environment: {
+                        ...current.environment,
+                        label: event.payload.environmentLabel,
+                      },
+                    }),
+              },
+              [event],
+            ];
           // Themes and usage-limit sources survive snapshots because snapshots never include them.
           default:
             return [current, [event]];
@@ -3590,11 +3605,16 @@ export const layerWsRpc = (
                 Stream.map((settings) =>
                   ServerSettings.redactServerSettingsForClient(settings, settingsClient),
                 ),
-                Stream.map((settings) => ({
-                  version: 1 as const,
-                  type: "settingsUpdated" as const,
-                  payload: { settings },
-                })),
+                // fork: env-name
+                Stream.mapEffect((settings) =>
+                  serverEnvironment.getDescriptor.pipe(
+                    Effect.map(({ label }) => ({
+                      version: 1 as const,
+                      type: "settingsUpdated" as const,
+                      payload: { settings, environmentLabel: label },
+                    })),
+                  ),
+                ),
               );
 
               const liveUpdates = Stream.merge(

@@ -24,6 +24,7 @@ import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { isSpeechPlatformSupported } from "../speech/platform.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
+import { makeForkEnvironmentLabel } from "./forkEnvironmentName.ts"; // fork: env-name
 import { detectServerEnvironmentMachineKind } from "./ServerEnvironmentMachine.ts";
 
 export class ServerEnvironmentIdPersistenceError extends Schema.TaggedError<ServerEnvironmentIdPersistenceError>()(
@@ -194,6 +195,7 @@ export const make = Effect.gen(function* () {
   const environmentId = yield* identity.getEnvironmentId;
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
+  const currentLabel = yield* makeForkEnvironmentLabel(label); // fork: env-name
   const machine = yield* detectServerEnvironmentMachineKind();
   const launcher = yield* resolveServiceLauncherMode();
   const serverSelfUpdate = resolveServerSelfUpdateCapability({
@@ -314,8 +316,10 @@ export const make = Effect.gen(function* () {
     getEnvironmentId: Effect.succeed(environmentId),
     // Publishing opt-in and relay links change at runtime; read the capability per request.
     getDescriptor: readAgentActivityPublishingActive(secrets).pipe(
-      Effect.map((agentActivityPublishing) => ({
+      Effect.zip(currentLabel), // fork: env-name
+      Effect.map(([agentActivityPublishing, label]) => ({
         ...descriptor,
+        label,
         capabilities: { ...descriptor.capabilities, agentActivityPublishing },
       })),
     ),
