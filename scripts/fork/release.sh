@@ -37,7 +37,7 @@ if [[ "$prev_sha" == "$sha" ]]; then
   exit 0
 fi
 
-upstream_tag="$(git -C "$root" tag --merged "$sha" -l 'v*-nightly.*' --sort=-creatordate | head -n 1)"
+upstream_tag="$(git -C "$root" for-each-ref --count=1 --merged "$sha" --sort=-creatordate --format='%(refname:short)' 'refs/tags/v*-nightly.*')"
 core="$(sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' <<<"$upstream_tag")"
 [[ "$core" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "release: no upstream nightly tag merged into $sha" >&2; exit 1; }
 # The trailing number orders same-day builds: 1HHMM in UTC. Upstream uses its run number. A fixed
