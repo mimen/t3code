@@ -31,10 +31,7 @@ function targetWithLabel(target: ConnectionTarget, label: string): ConnectionTar
   }
 }
 
-export function entryWithLabel(
-  entry: ConnectionCatalogEntry,
-  label: string,
-): ConnectionCatalogEntry {
+function entryWithLabel(entry: ConnectionCatalogEntry, label: string): ConnectionCatalogEntry {
   return entryWithRoutes(
     entry,
     connectionRoutes(entry).map((route) => ({
