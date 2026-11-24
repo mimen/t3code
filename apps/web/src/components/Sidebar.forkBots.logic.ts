@@ -8,9 +8,25 @@ export type BotThread = Parameters<typeof hasUnseenCompletion>[0] &
   Parameters<typeof isThreadWorking>[0] &
   Pick<EnvironmentThreadShell, "environmentId" | "id" | "title" | "botId" | "settledOverride">;
 
-export type BotRowState = "needs-you" | "working" | "quiet";
+/** "asking" waits on the user's answer or approval, so it outranks everything. */
+export type BotRowState = "asking" | "needs-you" | "working" | "quiet";
+
+/** A bot the user should look at: shown, undimmed, counted, and docked. */
+export function botWantsYou(state: BotRowState): boolean {
+  return state === "asking" || state === "needs-you";
+}
 
 export function botRowState(thread: BotThread): BotRowState {
+  if (
+    thread.hasPendingApprovals ||
+    thread.hasPendingUserInput ||
+    thread.pendingSubagentRequest != null ||
+    (thread.interactionMode === "plan" &&
+      thread.hasActionableProposedPlan &&
+      !isThreadWorking(thread))
+  ) {
+    return "asking";
+  }
   if (isThreadWorking(thread)) return "working";
   if (thread.settledOverride === "settled") return "quiet";
   return hasUnseenCompletion(thread) || thread.latestRun?.status === "completed"
@@ -38,16 +54,20 @@ export function resolveBotsSection<T extends BotThread>(
 ) {
   const states = bots
     .map((thread) => ({ thread, state: botRowState(thread) }))
-    .toSorted((left, right) => left.thread.title.localeCompare(right.thread.title));
+    .toSorted(
+      (left, right) =>
+        Number(right.state === "asking") - Number(left.state === "asking") ||
+        left.thread.title.localeCompare(right.thread.title),
+    );
   const isRoute = (thread: T) =>
     scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === input.routeThreadKey;
   const rows = states
     .filter(
       ({ thread, state }) =>
-        isRoute(thread) || (input.expanded && (input.showAll || state === "needs-you")),
+        isRoute(thread) || (input.expanded && (input.showAll || botWantsYou(state))),
     )
-    .map(({ thread, state }) => ({ thread, state, dimmed: state !== "needs-you" }));
-  const needsYou = states.filter(({ state }) => state === "needs-you").map(({ thread }) => thread);
+    .map(({ thread, state }) => ({ thread, state, dimmed: !botWantsYou(state) }));
+  const needsYou = states.filter(({ state }) => botWantsYou(state)).map(({ thread }) => thread);
   return {
     rows,
     needsYou,
