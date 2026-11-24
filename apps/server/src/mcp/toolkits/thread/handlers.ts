@@ -26,7 +26,7 @@ import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { ThreadToolkit } from "./tools.ts";
-import { forkRoleToSet } from "../../../orchestration-v2/ForkRoles.ts"; // fork: roles
+import { forkBotToSet } from "../../../orchestration-v2/ForkBots.ts"; // fork: bots
 
 function queueEntry(
   projection: Pick<OrchestrationV2ThreadProjection, "runs" | "messages">,
@@ -428,12 +428,12 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         case "mark_unread":
           command = { ...common, type: "thread.mark-unread" };
           break;
-        // fork: roles
-        case "set_role":
-          command = { ...common, type: "thread.role.set", roleId: yield* forkRoleToSet(input) };
+        // fork: bots
+        case "set_bot":
+          command = { ...common, type: "thread.bot.set", botId: yield* forkBotToSet(input) };
           break;
-        case "clear_role": // fork: roles
-          command = { ...common, type: "thread.role.set", roleId: null };
+        case "clear_bot": // fork: bots
+          command = { ...common, type: "thread.bot.set", botId: null };
           break;
         case "pin": {
           // Always send a key, as the client does: the reducer ignores it for a

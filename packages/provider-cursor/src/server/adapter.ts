@@ -2926,7 +2926,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             harness: "Cursor",
             model: turnInput.modelSelection.model,
             runtimePolicy: turnInput.runtimePolicy,
-            roleInstructions: turnInput.roleInstructions, // fork: roles
+            botInstructions: turnInput.botInstructions, // fork: bots
           });
           // Resend only on a new/compacted/rewound conversation or when the instructions change.
           const sendRuntimeInstructions = delivered.runtime !== runtimeInstructions;

@@ -142,9 +142,9 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import { LaterShelfHeader, useLaterShelf } from "./Sidebar.forkLater"; // fork: later-shelf
 import { timedSnoozePresets } from "@t3tools/client-runtime/state/thread-settled"; // fork: later-shelf
 import { laterMenuItem } from "./threadActionMenu.forkLater"; // fork: later-shelf
-import { RolesEnd, RolesHeader, SidebarRoleIcon, useRolesSection } from "./Sidebar.forkRoles"; // fork: roles
-import { splitRoleThreads } from "./Sidebar.forkRoles.logic"; // fork: roles
-import { readForkRoleMenuState, useForkRoleMenuHandler } from "../state/forkRoles"; // fork: roles
+import { BotsEnd, BotsHeader, SidebarBotIcon, useBotsSection } from "./Sidebar.forkBots"; // fork: bots
+import { splitBotThreads } from "./Sidebar.forkBots.logic"; // fork: bots
+import { readForkBotMenuState, useForkBotMenuHandler } from "../state/forkBots"; // fork: bots
 import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
@@ -541,7 +541,7 @@ function useSidebarThreads(input: {
     ? visibleSettledThreads
     : routeThreadOnly(visibleSettledThreads, shelfRouteThreadKey);
   const laterShelf = useLaterShelf(snoozedThreads, shelfRouteThreadKey); // fork: later-shelf
-  const rolesSection = useRolesSection(partition.roleThreads, shelfRouteThreadKey); // fork: roles
+  const botsSection = useBotsSection(partition.botThreads, shelfRouteThreadKey); // fork: bots
   const visibleSnoozedThreads = snoozedShelfExpanded
     ? laterShelf.timed // fork: later-shelf
     : routeThreadOnly(laterShelf.timed, shelfRouteThreadKey); // fork: later-shelf
@@ -569,7 +569,7 @@ function useSidebarThreads(input: {
           };
         });
   const orderedThreads = [
-    ...rolesSection.rows.map(({ thread }) => thread), // fork: roles
+    ...botsSection.rows.map(({ thread }) => thread), // fork: bots
     ...pinnedThreads,
     ...(projectFolders === null
       ? activeThreads
@@ -581,7 +581,7 @@ function useSidebarThreads(input: {
   ];
   const sectionByThreadKey = new Map<string, SidebarSection>();
   for (const [list, section] of [
-    [partition.roleThreads, "roles"], // fork: roles
+    [partition.botThreads, "bots"], // fork: bots
     [pinnedThreads, "pinned"],
     [activeThreads, "active"],
     [workingThreads, "working"],
@@ -595,7 +595,7 @@ function useSidebarThreads(input: {
     threads,
     workingShelfEnabled,
     searchableThreads: [
-      ...partition.roleThreads, // fork: roles
+      ...partition.botThreads, // fork: bots
       ...pinnedThreads,
       ...activeThreads,
       ...workingThreads,
@@ -616,7 +616,7 @@ function useSidebarThreads(input: {
     snoozedShelfExpanded,
     toggleSnoozedShelf: () => setSnoozedShelfExpanded((value) => !value),
     laterShelf, // fork: later-shelf
-    rolesSection, // fork: roles
+    botsSection, // fork: bots
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
     projectFolders,
@@ -671,7 +671,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     serverConfigs,
     connectedEnvironmentIds: input.connectedEnvironmentIds,
   });
-  const { roles, others } = splitRoleThreads(visible); // fork: roles
+  const { bots, others } = splitBotThreads(visible); // fork: bots
   for (const thread of others) {
     const configLoaded = serverConfigs.has(thread.environmentId);
     const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
@@ -741,7 +741,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
         firstValidTimestampMs(right.snoozedUntil ?? null),
     ),
     settledThreads: sortSettledThreads(settled),
-    roleThreads: roles, // fork: roles
+    botThreads: bots, // fork: bots
     visibleThreads: visible,
     snoozeNow: preciseNow,
   };
@@ -971,7 +971,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     archiveThread,
     deleteThread,
   } = useThreadActions();
-  const handleForkRoleMenu = useForkRoleMenuHandler(); // fork: roles
+  const handleForkBotMenu = useForkBotMenuHandler(); // fork: bots
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -1354,7 +1354,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     snoozedShelfExpanded,
     toggleSnoozedShelf,
     laterShelf, // fork: later-shelf
-    rolesSection, // fork: roles
+    botsSection, // fork: bots
     workingShelfExpanded,
     toggleWorkingShelf,
     projectFolders,
@@ -2004,7 +2004,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     // Boring mode keeps a pinned open project or one the user filtered to, so it can start a thread.
     if (
       !hasProjectFolders &&
-      rolesSection.threads.length + // fork: roles
+      botsSection.threads.length + // fork: bots
         pinnedThreads.length +
         activeThreads.length +
         workingThreads.length +
@@ -2015,16 +2015,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       return [];
     }
     const items: SidebarListItem[] = [];
-    if (rolesSection.threads.length > 0) {
-      // fork: roles
-      items.push({ kind: "marker", marker: "roles-header" });
+    if (botsSection.threads.length > 0) {
+      // fork: bots
+      items.push({ kind: "marker", marker: "bots-header" });
       items.push(
         ...rowsOf(
-          rolesSection.rows.map(({ thread }) => thread),
-          "roles",
+          botsSection.rows.map(({ thread }) => thread),
+          "bots",
         ),
       );
-      items.push({ kind: "marker", marker: "roles-end" });
+      items.push({ kind: "marker", marker: "bots-end" });
     }
     items.push({ kind: "marker", marker: "pinned-header" });
     const pinnedRows = rowsOf(pinnedThreads, "pinned");
@@ -2092,8 +2092,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     workingShelfExpanded,
     snoozedShelfExpanded,
     settledShelfExpanded,
-    rolesSection.expanded, // fork: roles
-    rolesSection.showAll, // fork: roles
+    botsSection.expanded, // fork: bots
+    botsSection.showAll, // fork: bots
   ].join(":");
   const previousShelfExpansionKeyRef = useRef(shelfExpansionKey);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records moved rows and updates list motion after each layout-affecting commit
@@ -2725,7 +2725,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const isSettled =
           settledThreadKeysRef.current.has(threadKey) ||
-          (thread.roleId !== null && thread.settledOverride === "settled"); // fork: roles
+          (thread.botId !== null && thread.settledOverride === "settled"); // fork: bots
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
         const isPinned = thread.pinnedAt != null;
         const snoozePresets = resolveSnoozePresets(
@@ -2777,7 +2777,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 titleRegeneration: configLoaded,
               },
               snoozePresets,
-              forkRoles: readForkRoleMenuState(threadRef.environmentId, thread.roleId), // fork: roles
+              forkBots: readForkBotMenuState(threadRef.environmentId, thread.botId), // fork: bots
             }),
             position,
             source,
@@ -2785,7 +2785,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
-        if (await handleForkRoleMenu(threadRef, thread, clicked.value)) return; // fork: roles
+        if (await handleForkBotMenu(threadRef, thread, clicked.value)) return; // fork: bots
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
             clicked.value === "snooze:custom"
@@ -3555,29 +3555,29 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             sortableId={threadKey}
                             contextDrag={isContextDrag}
                             sortableDisabled={
-                              section === "roles" || // fork: roles
+                              section === "bots" || // fork: bots
                               renamingThreadKey === threadKey ||
                               !draggableThreadKeys.has(threadKey) ||
                               optimisticDrop !== null
                             }
                             thread={thread}
-                            variant={section === "roles" ? "role" : rowVariant} // fork: roles
-                            role={
-                              section === "roles" // fork: roles
+                            variant={section === "bots" ? "bot" : rowVariant} // fork: bots
+                            bot={
+                              section === "bots" // fork: bots
                                 ? {
                                     icon: (
-                                      <SidebarRoleIcon
+                                      <SidebarBotIcon
                                         environmentId={thread.environmentId}
-                                        roleId={thread.roleId}
+                                        botId={thread.botId}
                                       />
                                     ),
-                                    dimmed: rolesSection.dimmedKeys.has(threadKey),
+                                    dimmed: botsSection.dimmedKeys.has(threadKey),
                                   }
                                 : undefined
                             }
                             navigationParent={
                               folderRow ??
-                              (section === "roles" || // fork: roles
+                              (section === "bots" || // fork: bots
                               section === "working" ||
                               section === "snoozed" ||
                               section === "settled"
@@ -3588,7 +3588,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               section === "snoozed"
                                 ? "unsnooze"
                                 : section === "settled" ||
-                                    (section === "roles" && thread.settledOverride === "settled") // fork: roles
+                                    (section === "bots" && thread.settledOverride === "settled") // fork: bots
                                   ? "unsettle"
                                   : "settle"
                             }
@@ -3714,11 +3714,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           continue;
                         }
                         switch (item.marker) {
-                          case "roles-header": // fork: roles
-                            items.push(<RolesHeader key="roles-header" section={rolesSection} />);
+                          case "bots-header": // fork: bots
+                            items.push(<BotsHeader key="bots-header" section={botsSection} />);
                             break;
-                          case "roles-end": // fork: roles
-                            items.push(<RolesEnd key="roles-end" />);
+                          case "bots-end": // fork: bots
+                            items.push(<BotsEnd key="bots-end" />);
                             break;
                           case "pinned-header":
                             items.push(

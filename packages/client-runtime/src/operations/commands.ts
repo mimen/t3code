@@ -611,18 +611,18 @@ export const pinThread = Effect.fn("EnvironmentCommands.pinThread")(function* (
   });
 });
 
-// fork: roles
-export interface SetThreadRoleInput extends ThreadCommandInput {
-  readonly roleId: string | null;
+// fork: bots
+export interface SetThreadBotInput extends ThreadCommandInput {
+  readonly botId: string | null;
 }
-export const setThreadRole = Effect.fn("EnvironmentCommands.setThreadRole")(function* (
-  input: SetThreadRoleInput,
+export const setThreadBot = Effect.fn("EnvironmentCommands.setThreadBot")(function* (
+  input: SetThreadBotInput,
 ) {
   return yield* dispatch({
-    type: "thread.role.set",
+    type: "thread.bot.set",
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
-    roleId: input.roleId,
+    botId: input.botId,
   });
 });
 

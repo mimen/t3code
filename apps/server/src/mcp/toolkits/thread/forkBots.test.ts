@@ -4,14 +4,14 @@ import {
   EnvironmentId,
   ProviderInstanceId,
   ThreadId,
-  type ForkRolesListResult,
+  type ForkBotsListResult,
   type OrchestrationV2ServerCommand,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { McpSchema, McpServer } from "effect/ai";
 
-import * as ForkRoles from "../../../orchestration-v2/ForkRoles.ts";
+import * as ForkBots from "../../../orchestration-v2/ForkBots.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
@@ -22,13 +22,13 @@ import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
 
-const threadId = ThreadId.make("fork-roles-thread");
+const threadId = ThreadId.make("fork-bots-thread");
 const scope: McpInvocationContext.McpInvocationScope = {
-  environmentId: EnvironmentId.make("fork-roles-environment"),
-  requestNamespace: "fork-roles-session",
+  environmentId: EnvironmentId.make("fork-bots-environment"),
+  requestNamespace: "fork-bots-session",
   thread: {
     threadId,
-    providerSessionId: "fork-roles-session",
+    providerSessionId: "fork-bots-session",
     providerInstanceId: ProviderInstanceId.make("codex"),
   },
   client: undefined,
@@ -39,11 +39,11 @@ const client = McpSchema.McpServerClient.of({
   clientId: 1,
   protocolVersion: "2025-06-18",
   clientCapabilities: {},
-  clientInfo: { name: "fork-roles", version: "1" },
+  clientInfo: { name: "fork-bots", version: "1" },
   initializePayload: {
     protocolVersion: "2025-06-18",
     capabilities: {},
-    clientInfo: { name: "fork-roles", version: "1" },
+    clientInfo: { name: "fork-bots", version: "1" },
   },
   getClient: Effect.die("unused"),
 });
@@ -53,8 +53,8 @@ const declaredFailure = (result: McpSchema.CallToolResult) => {
   return result.isError === true && text?.type === "text" ? JSON.parse(text.text) : undefined;
 };
 
-const roles = (listing: ForkRolesListResult) =>
-  Layer.succeed(ForkRoles.ForkRoles, {
+const bots = (listing: ForkBotsListResult) =>
+  Layer.succeed(ForkBots.ForkBots, {
     list: Effect.succeed(listing),
     readBrief: () => Effect.undefined,
   });
@@ -83,55 +83,55 @@ const withServer = (dispatched: Array<OrchestrationV2ServerCommand>) =>
     ),
   );
 
-const organize = (args: Record<string, unknown>, listing: ForkRolesListResult) =>
+const organize = (args: Record<string, unknown>, listing: ForkBotsListResult) =>
   Effect.flatMap(McpServer.McpServer, (server) =>
     server.callTool({ name: "t3_thread_organize", arguments: args }),
   ).pipe(
     Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
     Effect.provideService(McpSchema.McpServerClient, client),
-    Effect.provide(roles(listing)),
+    Effect.provide(bots(listing)),
   );
 
-const listing: ForkRolesListResult = {
-  directory: "/roles",
-  roles: [
-    { id: "needs-you", name: "Needs you", path: "/roles/needs-you.md" },
-    { id: "inbox", name: "inbox", path: "/roles/inbox.md" },
+const listing: ForkBotsListResult = {
+  directory: "/bots",
+  bots: [
+    { id: "needs-you", name: "Needs you", path: "/bots/needs-you.md" },
+    { id: "inbox", name: "inbox", path: "/bots/inbox.md" },
   ],
 };
 
-it.effect("set_role and clear_role dispatch thread.role.set on the calling thread", () => {
+it.effect("set_bot and clear_bot dispatch thread.bot.set on the calling thread", () => {
   const dispatched: Array<OrchestrationV2ServerCommand> = [];
   return Effect.gen(function* () {
-    const set = yield* organize({ action: "set_role", roleId: "needs-you" }, listing);
+    const set = yield* organize({ action: "set_bot", botId: "needs-you" }, listing);
     expect(set.isError).toBe(false);
-    const cleared = yield* organize({ action: "clear_role" }, listing);
+    const cleared = yield* organize({ action: "clear_bot" }, listing);
     expect(cleared.isError).toBe(false);
     expect(dispatched).toMatchObject([
-      { type: "thread.role.set", threadId, roleId: "needs-you" },
-      { type: "thread.role.set", threadId, roleId: null },
+      { type: "thread.bot.set", threadId, botId: "needs-you" },
+      { type: "thread.bot.set", threadId, botId: null },
     ]);
   }).pipe(Effect.provide(withServer(dispatched)));
 });
 
-it.effect("set_role refuses a missing role file and lists the available ids", () => {
+it.effect("set_bot refuses a missing bot file and lists the available ids", () => {
   const dispatched: Array<OrchestrationV2ServerCommand> = [];
   return Effect.gen(function* () {
-    const missing = yield* organize({ action: "set_role", roleId: "gone" }, listing);
+    const missing = yield* organize({ action: "set_bot", botId: "gone" }, listing);
     expect(declaredFailure(missing)).toMatchObject({
       code: "invalid_request",
-      message: "No role file gone.md in /roles. Available roles: needs-you, inbox.",
+      message: "No bot file gone.md in /bots. Available bots: needs-you, inbox.",
     });
-    const noId = yield* organize({ action: "set_role" }, listing);
+    const noId = yield* organize({ action: "set_bot" }, listing);
     expect(declaredFailure(noId)).toMatchObject({
-      message: "set_role requires roleId. Available roles: needs-you, inbox.",
+      message: "set_bot requires botId. Available bots: needs-you, inbox.",
     });
     const off = yield* organize(
-      { action: "set_role", roleId: "needs-you" },
-      { directory: null, roles: [] },
+      { action: "set_bot", botId: "needs-you" },
+      { directory: null, bots: [] },
     );
     expect(declaredFailure(off)).toMatchObject({
-      message: expect.stringContaining("No roles directory is set"),
+      message: expect.stringContaining("No bots directory is set"),
     });
     expect(dispatched).toEqual([]);
   }).pipe(Effect.provide(withServer(dispatched)));

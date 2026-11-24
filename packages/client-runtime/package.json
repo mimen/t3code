@@ -395,9 +395,9 @@
       "types": "./src/state/issueTrackers.ts",
       "default": "./src/state/issueTrackers.ts"
     },
-    "./state/fork-roles": {
-      "types": "./src/state/forkRoles.ts",
-      "default": "./src/state/forkRoles.ts"
+    "./state/fork-bots": {
+      "types": "./src/state/forkBots.ts",
+      "default": "./src/state/forkBots.ts"
     },
     "./state/source-control": {
       "types": "./src/state/sourceControl.ts",

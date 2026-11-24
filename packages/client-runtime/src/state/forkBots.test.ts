@@ -12,11 +12,11 @@ import { applyOrchestrationV2ProjectionEvent } from "./orchestrationV2Projection
 
 const now = DateTime.makeUnsafe("2026-11-23T00:00:00.000Z");
 const later = DateTime.makeUnsafe("2026-11-23T01:00:00.000Z");
-const threadId = ThreadId.make("thread-role");
+const threadId = ThreadId.make("thread-bot");
 const projection = {
   thread: {
     id: threadId,
-    projectId: ProjectId.make("project-role"),
+    projectId: ProjectId.make("project-bot"),
     title: "Needs you",
     providerInstanceId: ProviderInstanceId.make("codex"),
     modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
@@ -56,21 +56,21 @@ const projection = {
   updatedAt: now,
 } as OrchestrationV2ThreadProjection;
 
-const roleSet = (roleId: string | null) =>
+const botSet = (botId: string | null) =>
   ({
-    id: `event-role-${roleId}`,
-    type: "thread.role-set",
+    id: `event-bot-${botId}`,
+    type: "thread.bot-set",
     threadId,
     occurredAt: later,
-    payload: { ...projection.thread, roleId, updatedAt: later },
+    payload: { ...projection.thread, botId, updatedAt: later },
   }) as OrchestrationV2DomainEvent;
 
-describe("thread.role-set", () => {
-  it("sets and clears the role without counting as activity", () => {
-    const set = applyOrchestrationV2ProjectionEvent(projection, roleSet("coordinator"));
-    expect(set?.thread.roleId).toBe("coordinator");
+describe("thread.bot-set", () => {
+  it("sets and clears the bot without counting as activity", () => {
+    const set = applyOrchestrationV2ProjectionEvent(projection, botSet("coordinator"));
+    expect(set?.thread.botId).toBe("coordinator");
     expect(set?.updatedAt).toEqual(now);
-    const cleared = applyOrchestrationV2ProjectionEvent(set!, roleSet(null));
-    expect(cleared?.thread.roleId).toBeNull();
+    const cleared = applyOrchestrationV2ProjectionEvent(set!, botSet(null));
+    expect(cleared?.thread.botId).toBeNull();
   });
 });

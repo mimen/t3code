@@ -63,10 +63,10 @@ vi.mock("../state/entities", () => ({
 }));
 vi.mock("../state/environments", () => ({ usePrimaryEnvironmentId: () => "primary" }));
 vi.mock("../state/threads", () => ({ threadEnvironment: { updateMetadata: "metadata" } }));
-// fork: roles
-vi.mock("../state/forkRoles", () => ({
-  readForkRoleMenuState: () => ({ current: null, list: null }),
-  useForkRoleMenuHandler: () => async () => false,
+// fork: bots
+vi.mock("../state/forkBots", () => ({
+  readForkBotMenuState: () => ({ current: null, list: null }),
+  useForkBotMenuHandler: () => async () => false,
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand: () => async () => {

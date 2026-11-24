@@ -31,7 +31,7 @@ import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { threadEnvironment } from "../state/threads";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope } from "../state/session";
-import { readForkRoleMenuState, useForkRoleMenuHandler } from "../state/forkRoles"; // fork: roles
+import { readForkBotMenuState, useForkBotMenuHandler } from "../state/forkBots"; // fork: bots
 import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
@@ -93,7 +93,7 @@ export function useThreadActionMenu(input: {
     markThreadUnread,
     turnThreadIntoProject,
   } = useThreadActions();
-  const handleForkRoleMenu = useForkRoleMenuHandler(); // fork: roles
+  const handleForkBotMenu = useForkBotMenuHandler(); // fork: bots
   const regenerateThreadTitle = useOrchestrationCommand(threadEnvironment.regenerateTitle, {
     reportFailure: false,
   });
@@ -156,7 +156,7 @@ export function useThreadActionMenu(input: {
         snoozePresets,
         canShareWithGuest,
         canTurnIntoProject: canTurnThreadIntoProject(threadRef),
-        forkRoles: readForkRoleMenuState(threadRef.environmentId, thread.roleId), // fork: roles
+        forkBots: readForkBotMenuState(threadRef.environmentId, thread.botId), // fork: bots
       });
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -171,7 +171,7 @@ export function useThreadActionMenu(input: {
         );
         return;
       }
-      if (await handleForkRoleMenu(threadRef, thread, action)) return; // fork: roles
+      if (await handleForkBotMenu(threadRef, thread, action)) return; // fork: bots
       if (action.startsWith("snooze:")) {
         const preset =
           action === "snooze:custom"

@@ -584,8 +584,8 @@ type SidebarThreadRowProps = {
   thread: SidebarThreadSummary;
   // "folder" is a one-line row inside a boring sidebar project folder;
   // "folder-multiline" adds the card's environment and PR line under it.
-  variant: "card" | "slim" | "folder" | "folder-multiline" | "role"; // fork: roles
-  role?: { readonly icon: ReactNode; readonly dimmed: boolean } | undefined; // fork: roles
+  variant: "card" | "slim" | "folder" | "folder-multiline" | "bot"; // fork: bots
+  bot?: { readonly icon: ReactNode; readonly dimmed: boolean } | undefined; // fork: bots
   navigationParent?: string | undefined;
   variantAction: SidebarSweepAction;
   settlementSupported: boolean;
@@ -1312,9 +1312,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   ) : null;
 
   if (variant !== "card") {
-    const role = variant === "role"; // fork: roles
-    const multiline = variant === "folder-multiline" || role; // fork: roles
-    const inFolder = variant === "folder" || variant === "folder-multiline"; // fork: roles
+    const bot = variant === "bot"; // fork: bots
+    const multiline = variant === "folder-multiline" || bot; // fork: bots
+    const inFolder = variant === "folder" || variant === "folder-multiline"; // fork: bots
     return (
       <li
         data-thread-item={threadKey}
@@ -1324,7 +1324,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           "list-none [content-visibility:auto] [contain-intrinsic-size:auto_--spacing(9)]",
           metaLine !== null && multiline && "[contain-intrinsic-size:auto_--spacing(13.5)]",
           sortable?.isDragging && "relative z-20",
-          props.role?.dimmed && "opacity-55", // fork: roles
+          props.bot?.dimmed && "opacity-55", // fork: bots
         )}
       >
         <Tooltip disabled={isRenaming || sortable?.isDragging}>
@@ -1339,7 +1339,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 aria-label={accessibility.label}
                 aria-current={accessibility.current}
                 data-testid={
-                  role ? "sidebar-row-role" : inFolder ? "sidebar-row-folder" : "sidebar-row-slim" // fork: roles
+                  bot ? "sidebar-row-bot" : inFolder ? "sidebar-row-folder" : "sidebar-row-slim" // fork: bots
                 }
                 aria-busy={isRegeneratingTitle || undefined}
                 className={cn(
@@ -1359,8 +1359,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           >
             {/* `contents` keeps one-line rows a single flex row. */}
             <div className={multiline ? "flex h-6 min-w-0 items-center gap-2.5" : "contents"}>
-              {inFolder ? null : role ? ( // fork: roles
-                props.role?.icon
+              {inFolder ? null : bot ? ( // fork: bots
+                props.bot?.icon
               ) : (
                 <span
                   className={cn(
@@ -1428,7 +1428,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           <T>Dismiss Woke notification</T>
                         </TooltipPopup>
                       </Tooltip>
-                    ) : (inFolder || role) && topStatus ? ( // fork: roles
+                    ) : (inFolder || bot) && topStatus ? ( // fork: bots
                       // Folder rows have no status line, so the status takes the time slot.
                       <span
                         className={cn(

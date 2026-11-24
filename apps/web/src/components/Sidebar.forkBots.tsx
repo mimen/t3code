@@ -1,6 +1,6 @@
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId, ForkRole } from "@t3tools/contracts";
+import type { EnvironmentId, ForkBot } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { useGT } from "gt-react";
 import { BotIcon, EyeIcon, EyeOffIcon } from "lucide-react";
@@ -8,26 +8,26 @@ import { createElement, lazy, Suspense, useState } from "react";
 
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { cn } from "../lib/utils";
-import { useForkRole, useForkRolesPrefetch } from "../state/forkRoles";
-import { resolveRolesSection } from "./Sidebar.forkRoles.logic";
+import { useForkBot, useForkBotsPrefetch } from "../state/forkBots";
+import { resolveBotsSection } from "./Sidebar.forkBots.logic";
 import { SortableSidebarMarker } from "./sidebar/SidebarListMarkers";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
-const ROLES_EXPANDED_KEY = "t3code:sidebar:roles-expanded";
+const BOTS_EXPANDED_KEY = "t3code:sidebar:bots-expanded";
 
-export function useRolesSection(
-  roles: readonly EnvironmentThreadShell[],
+export function useBotsSection(
+  bots: readonly EnvironmentThreadShell[],
   routeThreadKey: string | null,
 ) {
-  const [expanded, setExpanded] = useLocalStorage(ROLES_EXPANDED_KEY, true, Schema.Boolean);
+  const [expanded, setExpanded] = useLocalStorage(BOTS_EXPANDED_KEY, true, Schema.Boolean);
   const [showAll, setShowAll] = useState(false);
-  useForkRolesPrefetch();
-  const section = resolveRolesSection(roles, { expanded, showAll, routeThreadKey });
+  useForkBotsPrefetch();
+  const section = resolveBotsSection(bots, { expanded, showAll, routeThreadKey });
   return {
     ...section,
-    threads: roles,
+    threads: bots,
     expanded,
     showAll,
     dimmedKeys: new Set(
@@ -40,11 +40,11 @@ export function useRolesSection(
   };
 }
 
-export function RolesEnd() {
+export function BotsEnd() {
   return (
     <SortableSidebarMarker
-      marker="roles-end"
-      data-testid="sidebar-roles-end"
+      marker="bots-end"
+      data-testid="sidebar-bots-end"
       className="pointer-events-none mx-2.5 flex h-3 items-center"
     >
       <div aria-hidden className="h-px flex-1 bg-sidebar-border" />
@@ -52,21 +52,21 @@ export function RolesEnd() {
   );
 }
 
-export function RolesHeader(props: { readonly section: ReturnType<typeof useRolesSection> }) {
+export function BotsHeader(props: { readonly section: ReturnType<typeof useBotsSection> }) {
   const { section } = props;
   const gt = useGT();
   const showAllLabel = section.showAll
-    ? gt("Hide quiet roles", { $context: "sidebar roles section" })
-    : gt("Show all roles", { $context: "sidebar roles section" });
+    ? gt("Hide quiet bots", { $context: "sidebar bots section" })
+    : gt("Show all bots", { $context: "sidebar bots section" });
   return (
     <SortableSidebarMarker
-      marker="roles-header"
-      data-testid="sidebar-roles-header"
+      marker="bots-header"
+      data-testid="sidebar-bots-header"
       className="relative mx-0.5 flex h-8 items-center"
     >
       <CollapsibleSectionHeader
-        data-sidebar-row="shelf:roles"
-        data-testid="sidebar-roles-shelf-toggle"
+        data-sidebar-row="shelf:bots"
+        data-testid="sidebar-bots-shelf-toggle"
         onClick={section.toggle}
         expanded={section.expanded}
         accessory={
@@ -76,7 +76,7 @@ export function RolesHeader(props: { readonly section: ReturnType<typeof useRole
           </span>
         }
       >
-        {gt("Roles", { $context: "sidebar section" })}
+        {gt("Bots", { $context: "sidebar section" })}
       </CollapsibleSectionHeader>
       <Tooltip>
         <TooltipTrigger
@@ -98,41 +98,41 @@ export function RolesHeader(props: { readonly section: ReturnType<typeof useRole
   );
 }
 
-// All lucide icons load as one chunk, only once a role names an icon.
-const LucideRoleIcon = lazy(() =>
+// All lucide icons load as one chunk, only once a bot names an icon.
+const LucideBotIcon = lazy(() =>
   import("../lib/lucideIconByName").then(({ lucideIconByName }) => ({
-    default: function LucideRoleIcon(props: { name: string; className: string }) {
+    default: function LucideBotIcon(props: { name: string; className: string }) {
       return createElement(lucideIconByName(props.name) ?? BotIcon, { className: props.className });
     },
   })),
 );
 
-export function ForkRoleIcon(props: {
-  readonly role: Pick<ForkRole, "icon" | "color"> | null;
+export function ForkBotIcon(props: {
+  readonly bot: Pick<ForkBot, "icon" | "color"> | null;
   readonly className?: string;
 }) {
   const className = cn("size-3.5 shrink-0", props.className);
-  const icon = props.role?.icon;
+  const icon = props.bot?.icon;
   return (
     <span
       aria-hidden
-      className={cn("inline-flex shrink-0", props.role?.color === undefined && "text-icon-muted")}
-      style={props.role?.color === undefined ? undefined : { color: props.role.color }}
+      className={cn("inline-flex shrink-0", props.bot?.color === undefined && "text-icon-muted")}
+      style={props.bot?.color === undefined ? undefined : { color: props.bot.color }}
     >
       {icon === undefined ? (
         <BotIcon className={className} />
       ) : (
         <Suspense fallback={<BotIcon className={className} />}>
-          <LucideRoleIcon name={icon} className={className} />
+          <LucideBotIcon name={icon} className={className} />
         </Suspense>
       )}
     </span>
   );
 }
 
-export function SidebarRoleIcon(props: {
+export function SidebarBotIcon(props: {
   readonly environmentId: EnvironmentId;
-  readonly roleId: string | null;
+  readonly botId: string | null;
 }) {
-  return <ForkRoleIcon role={useForkRole(props.environmentId, props.roleId)} />;
+  return <ForkBotIcon bot={useForkBot(props.environmentId, props.botId)} />;
 }

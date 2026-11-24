@@ -118,7 +118,7 @@ import { Label } from "../ui/label";
 import { Menu, MenuTrigger, MenuPopup, MenuItem, MenuSeparator } from "../ui/menu";
 import { ToggleGroup, Toggle } from "../ui/toggle-group";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from "../ui/empty";
-import { ForkRolesSettingsSection } from "./ForkRolesSettings"; // fork: roles
+import { ForkBotsSettingsSection } from "./ForkBotsSettings"; // fork: bots
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -528,8 +528,8 @@ export function ScheduledTasksSettings(target: {
           </div>
         )}
       </SettingsSection>
-      {/* fork: roles */}
-      <ForkRolesSettingsSection />
+      {/* fork: bots */}
+      <ForkBotsSettingsSection />
       {editor ? (
         <ScheduledTaskEditorDialog
           key={`${editor.environmentId}:${editor.task?.id ?? "new"}`}

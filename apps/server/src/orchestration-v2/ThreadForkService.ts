@@ -147,7 +147,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         lastVisitedAt: null,
         // A fork is a new thread; it does not inherit how often the source was opened.
         opens: null,
-        roleId: null, // fork: roles
+        botId: null, // fork: bots
         deletedAt: null,
       };
       const transfer: OrchestrationV2ContextTransfer = {

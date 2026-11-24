@@ -4,13 +4,13 @@ import { isThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 
 import { hasUnseenCompletion, type SidebarListItem } from "./Sidebar.logic";
 
-export type RoleThread = Parameters<typeof hasUnseenCompletion>[0] &
+export type BotThread = Parameters<typeof hasUnseenCompletion>[0] &
   Parameters<typeof isThreadWorking>[0] &
-  Pick<EnvironmentThreadShell, "environmentId" | "id" | "title" | "roleId" | "settledOverride">;
+  Pick<EnvironmentThreadShell, "environmentId" | "id" | "title" | "botId" | "settledOverride">;
 
-export type RoleRowState = "needs-you" | "working" | "quiet";
+export type BotRowState = "needs-you" | "working" | "quiet";
 
-export function roleRowState(thread: RoleThread): RoleRowState {
+export function botRowState(thread: BotThread): BotRowState {
   if (isThreadWorking(thread)) return "working";
   if (thread.settledOverride === "settled") return "quiet";
   return hasUnseenCompletion(thread) || thread.latestRun?.status === "completed"
@@ -18,26 +18,26 @@ export function roleRowState(thread: RoleThread): RoleRowState {
     : "quiet";
 }
 
-/** Role threads leave every other section, so settling or pinning a role never moves it. */
-export function splitRoleThreads<T extends Pick<EnvironmentThreadShell, "roleId">>(
+/** Bot threads leave every other section, so settling or pinning a bot never moves it. */
+export function splitBotThreads<T extends Pick<EnvironmentThreadShell, "botId">>(
   threads: readonly T[],
 ) {
-  const roles: T[] = [];
+  const bots: T[] = [];
   const others: T[] = [];
-  for (const thread of threads) (thread.roleId ? roles : others).push(thread);
-  return { roles, others };
+  for (const thread of threads) (thread.botId ? bots : others).push(thread);
+  return { bots, others };
 }
 
-export function resolveRolesSection<T extends RoleThread>(
-  roles: readonly T[],
+export function resolveBotsSection<T extends BotThread>(
+  bots: readonly T[],
   input: {
     readonly expanded: boolean;
     readonly showAll: boolean;
     readonly routeThreadKey: string | null;
   },
 ) {
-  const states = roles
-    .map((thread) => ({ thread, state: roleRowState(thread) }))
+  const states = bots
+    .map((thread) => ({ thread, state: botRowState(thread) }))
     .toSorted((left, right) => left.thread.title.localeCompare(right.thread.title));
   const isRoute = (thread: T) =>
     scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === input.routeThreadKey;
@@ -54,8 +54,8 @@ export function resolveRolesSection<T extends RoleThread>(
   };
 }
 
-/** The drag projection rebuilds from the Pinned header down; the roles block above it stays put. */
-export function rolesBlock(items: readonly SidebarListItem[]): SidebarListItem[] {
+/** The drag projection rebuilds from the Pinned header down; the bots block above it stays put. */
+export function botsBlock(items: readonly SidebarListItem[]): SidebarListItem[] {
   const pinnedAt = items.findIndex(
     (item) => item.kind === "marker" && item.marker === "pinned-header",
   );

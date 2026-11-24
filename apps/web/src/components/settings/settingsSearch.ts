@@ -16,7 +16,7 @@ import { writeLocalStorageValue } from "../../hooks/useLocalStorage";
 import type { MessageResolver } from "../../i18n/messages";
 import { commandLabel } from "./KeybindingsSettings.logic";
 import type { ResolvedSettingsScope } from "./settingsScope";
-import { FORK_ROLES_SETTINGS_SEARCH_ITEMS } from "./settingsSearch.forkRoles"; // fork: roles
+import { FORK_BOTS_SETTINGS_SEARCH_ITEMS } from "./settingsSearch.forkBots"; // fork: bots
 
 export type SettingsPath =
   | "/settings/projects"
@@ -1116,7 +1116,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: msg("Scheduled tasks"),
     to: "/settings/scheduled-tasks",
   },
-  ...FORK_ROLES_SETTINGS_SEARCH_ITEMS, // fork: roles
+  ...FORK_BOTS_SETTINGS_SEARCH_ITEMS, // fork: bots
   {
     id: "agent-browser-access",
     title: msg("Agent browser access"),

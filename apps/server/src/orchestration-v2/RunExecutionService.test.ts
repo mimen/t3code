@@ -49,7 +49,7 @@ import { SqlError, classifySqliteError } from "effect/sql/SqlError";
 
 import { toPersistenceSqlError } from "../persistence/Errors.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import * as ForkRoles from "./ForkRoles.ts"; // fork: roles
+import * as ForkBots from "./ForkBots.ts"; // fork: bots
 import * as CheckpointService from "./CheckpointService.ts";
 import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
@@ -1004,14 +1004,14 @@ it.effect("passes the thread's MCP app context to the provider under a safe key"
   ),
 );
 
-// fork: roles
-it.effect("passes a role thread's brief to the provider on each turn", () =>
+// fork: bots
+it.effect("passes a bot thread's brief to the provider on each turn", () =>
   Effect.gen(function* () {
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const started = yield* Deferred.make<ProviderAdapter.ProviderAdapterV2TurnInput>();
-    const threadId = ThreadId.make("thread:run-execution-role");
+    const threadId = ThreadId.make("thread:run-execution-bot");
     const providerInstanceId = ProviderInstanceId.make("codex");
-    const attemptId = RunAttemptId.make("attempt:run-execution-role");
+    const attemptId = RunAttemptId.make("attempt:run-execution-bot");
     const session = {
       events: Stream.never,
       startTurn: (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
@@ -1019,29 +1019,29 @@ it.effect("passes a role thread's brief to the provider on each turn", () =>
     } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime;
 
     yield* runExecution.startRootRun({
-      commandId: CommandId.make("command:run-execution-role"),
-      appThread: { ...rootAppThread(threadId), roleId: "needs-you" },
-      providerSessionId: ProviderSessionId.make("session:run-execution-role"),
+      commandId: CommandId.make("command:run-execution-bot"),
+      appThread: { ...rootAppThread(threadId), botId: "needs-you" },
+      providerSessionId: ProviderSessionId.make("session:run-execution-bot"),
       session,
       run: {
-        id: RunId.make("run:run-execution-role"),
+        id: RunId.make("run:run-execution-bot"),
         threadId,
         ordinal: 1,
         providerInstanceId,
       } as OrchestrationV2Run,
-      rootNode: { id: NodeId.make("node:run-execution-role") } as OrchestrationV2ExecutionNode,
+      rootNode: { id: NodeId.make("node:run-execution-bot") } as OrchestrationV2ExecutionNode,
       checkpointScope: {
-        id: CheckpointScopeId.make("checkpoint-scope:run-execution-role"),
+        id: CheckpointScopeId.make("checkpoint-scope:run-execution-bot"),
       } as OrchestrationV2CheckpointScope,
       providerThread: {
-        id: ProviderThreadId.make("provider-thread:run-execution-role"),
+        id: ProviderThreadId.make("provider-thread:run-execution-bot"),
         driver,
       } as OrchestrationV2ProviderThread,
       attempt: { id: attemptId, providerTurnId: null } as OrchestrationV2RunAttempt,
       attemptId,
       providerTurnOrdinal: 1,
       message: {
-        messageId: MessageId.make("message:run-execution-role"),
+        messageId: MessageId.make("message:run-execution-bot"),
         text: "Anything new?",
         attachments: [],
         createdBy: "user",
@@ -1053,17 +1053,17 @@ it.effect("passes a role thread's brief to the provider on each turn", () =>
 
     const input = yield* Deferred.await(started);
     assert.equal(
-      input.roleInstructions,
-      '<role id="needs-you">\nThis thread holds a standing role. Its brief, from needs-you.md:\n\nTriage the queue.\n</role>',
+      input.botInstructions,
+      '<bot id="needs-you">\nThis thread holds a standing bot. Its brief, from needs-you.md:\n\nTriage the queue.\n</bot>',
     );
   }).pipe(
     Effect.provide(
       layerRunExecutionTest.pipe(
         Layer.provide(
-          Layer.succeed(ForkRoles.ForkRoles, {
+          Layer.succeed(ForkBots.ForkBots, {
             list: Effect.die("unused"),
-            readBrief: (roleId) =>
-              Effect.succeed(roleId === "needs-you" ? "Triage the queue." : undefined),
+            readBrief: (botId) =>
+              Effect.succeed(botId === "needs-you" ? "Triage the queue." : undefined),
           }),
         ),
       ),

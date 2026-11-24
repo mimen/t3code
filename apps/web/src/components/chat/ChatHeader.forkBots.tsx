@@ -3,33 +3,33 @@ import { useGT } from "gt-react";
 
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useThreadShell } from "../../state/entities";
-import { useForkRole } from "../../state/forkRoles";
-import { ForkRoleIcon } from "../Sidebar.forkRoles";
+import { useForkBot } from "../../state/forkBots";
+import { ForkBotIcon } from "../Sidebar.forkBots";
 import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
   WorkspaceBreadcrumbText,
 } from "../WorkspaceBreadcrumb";
 
-export function RoleBreadcrumb(props: { readonly threadRef: ScopedThreadRef }) {
+export function BotBreadcrumb(props: { readonly threadRef: ScopedThreadRef }) {
   const gt = useGT();
-  const roleId = useThreadShell(props.threadRef)?.roleId ?? null;
-  const role = useForkRole(props.threadRef.environmentId, roleId);
-  if (roleId === null) return null;
+  const botId = useThreadShell(props.threadRef)?.botId ?? null;
+  const bot = useForkBot(props.threadRef.environmentId, botId);
+  if (botId === null) return null;
   return (
     <>
       <WorkspaceBreadcrumbItem>
-        {role === null ? (
-          <WorkspaceBreadcrumbText>{roleId}</WorkspaceBreadcrumbText>
+        {bot === null ? (
+          <WorkspaceBreadcrumbText>{botId}</WorkspaceBreadcrumbText>
         ) : (
           <button
             type="button"
-            aria-label={gt("Open role file: {role}", { role: role.name })}
-            onClick={() => useRightPanelStore.getState().openFile(props.threadRef, role.path)}
+            aria-label={gt("Open bot file: {bot}", { bot: bot.name })}
+            onClick={() => useRightPanelStore.getState().openFile(props.threadRef, bot.path)}
             className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            <ForkRoleIcon role={role} />
-            <WorkspaceBreadcrumbText>{role.name}</WorkspaceBreadcrumbText>
+            <ForkBotIcon bot={bot} />
+            <WorkspaceBreadcrumbText>{bot.name}</WorkspaceBreadcrumbText>
           </button>
         )}
       </WorkspaceBreadcrumbItem>
