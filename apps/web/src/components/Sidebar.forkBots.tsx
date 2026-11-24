@@ -9,7 +9,12 @@ import { createElement, lazy, Suspense, useState } from "react";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { cn } from "../lib/utils";
 import { useForkBot, useForkBotsPrefetch } from "../state/forkBots";
-import { type BotRowState, resolveBotsSection } from "./Sidebar.forkBots.logic";
+import {
+  type BotRowState,
+  botRowState,
+  botWantsYou,
+  resolveBotsSection,
+} from "./Sidebar.forkBots.logic";
 import { RelativeTimeLabel } from "./sidebar/SidebarThreadRow";
 import { SortableSidebarMarker } from "./sidebar/SidebarListMarkers";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
@@ -93,7 +98,12 @@ export function BotsHeader(props: {
             {label}
           </span>
           {dock.slice(0, DOCK_LIMIT).map((thread) => (
-            <BotDockChip key={thread.id} thread={thread} onOpenThread={props.onOpenThread} />
+            <BotDockChip
+              key={thread.id}
+              thread={thread}
+              asking={botRowState(thread) === "asking"}
+              onOpenThread={props.onOpenThread}
+            />
           ))}
           {dock.length > DOCK_LIMIT ? (
             <span className="text-sidebar-muted-foreground tabular-nums">
@@ -124,10 +134,12 @@ export function BotsHeader(props: {
 
 function BotDockChip(props: {
   readonly thread: Pick<EnvironmentThreadShell, "environmentId" | "id" | "botId" | "title">;
+  readonly asking: boolean;
   readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
 }) {
   const { thread } = props;
   const bot = useForkBot(thread.environmentId, thread.botId);
+  const asking = props.asking;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -145,9 +157,9 @@ function BotDockChip(props: {
           aria-hidden
           className={cn(
             "absolute -top-0.5 -right-0.5 size-1.5 rounded-full ring-2 ring-sidebar-control-surface",
-            bot?.color === undefined && "bg-primary",
+            asking ? "bg-warning" : bot?.color === undefined && "bg-primary",
           )}
-          style={bot?.color === undefined ? undefined : { backgroundColor: bot.color }}
+          style={asking || bot?.color === undefined ? undefined : { backgroundColor: bot.color }}
         />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{thread.title}</TooltipPopup>
@@ -198,7 +210,7 @@ function SidebarBotIcon(props: {
 function SidebarBotStatus(props: {
   readonly environmentId: EnvironmentId;
   readonly botId: string | null;
-  readonly state: Exclude<BotRowState, "quiet">;
+  readonly state: Exclude<BotRowState, "quiet" | "asking">;
 }) {
   const gt = useGT();
   const color = useForkBot(props.environmentId, props.botId)?.color;
@@ -233,12 +245,14 @@ export function sidebarBotRow(
   state: BotRowState | undefined,
 ) {
   const botState = state ?? "quiet";
+  // An asking bot shows the row's own "Awaiting Input" or "Pending Approval" status instead.
   const lastRun = thread.latestRun?.completedAt ?? thread.latestRun?.startedAt ?? null;
   return {
     icon: <SidebarBotIcon environmentId={thread.environmentId} botId={thread.botId} />,
-    dimmed: botState !== "needs-you",
+    dimmed: !botWantsYou(botState),
+    urgent: botState === "asking",
     status:
-      botState === "quiet" ? null : (
+      botState === "quiet" || botState === "asking" ? null : (
         <SidebarBotStatus
           environmentId={thread.environmentId}
           botId={thread.botId}

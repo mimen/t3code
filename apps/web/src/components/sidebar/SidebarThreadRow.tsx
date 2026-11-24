@@ -593,6 +593,7 @@ type SidebarThreadRowProps = {
     | {
         readonly icon: ReactNode;
         readonly dimmed: boolean;
+        readonly urgent: boolean;
         readonly status: ReactNode;
         readonly tooltipLine: ReactNode;
       }
@@ -1445,7 +1446,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       </Tooltip>
                     ) : bot && props.bot?.status ? ( // fork: bots
                       props.bot.status
-                    ) : inFolder && topStatus ? (
+                    ) : (inFolder || props.bot?.urgent) && topStatus ? ( // fork: bots
                       // Folder rows have no status line, so the status takes the time slot.
                       <span
                         className={cn(

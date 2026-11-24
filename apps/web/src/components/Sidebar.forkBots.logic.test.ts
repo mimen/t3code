@@ -86,6 +86,28 @@ describe("botRowState", () => {
   });
 });
 
+describe("a bot waiting on the user", () => {
+  const asking = bot("Zz Asking", {
+    hasPendingUserInput: true,
+    latestRun: { ...bot("x").latestRun!, status: "waiting", completedAt: null },
+  });
+  const approval = bot("Zz Approval", { hasPendingApprovals: true });
+
+  it("is asking, not quiet, whether it waits on input or an approval", () => {
+    expect(botRowState(asking)).toBe("asking");
+    expect(botRowState(approval)).toBe("asking");
+  });
+
+  it("is listed first, undimmed, counted, and first in the dock", () => {
+    const section = resolveBotsSection([...all, asking], closed);
+    expect(section.rows[0]).toMatchObject({ thread: asking, state: "asking", dimmed: false });
+    expect(section.needsYouCount).toBe(3);
+    expect(resolveBotsSection([...all, asking], { ...closed, expanded: false }).needsYou[0]).toBe(
+      asking,
+    );
+  });
+});
+
 describe("resolveBotsSection", () => {
   it("lists only bots that need the user, counts them, and flags a working bot", () => {
     const section = resolveBotsSection(all, closed);
