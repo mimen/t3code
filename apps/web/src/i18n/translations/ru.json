@@ -2514,6 +2514,14 @@
   "69f1020fb201bf9d": "Hide quiet bots",
   "dbe7b8e9c744029c": "Show all bots",
   "12fd17a688866ea2": "Bots",
+  "3ec9665917b942ef": "Needs you",
+  "4cb546c7fcd2ea84": [
+    "Last run ",
+    {
+      "t": "RelativeTimeLabel",
+      "i": 1
+    }
+  ],
   "05e8891ef57c0d63": "Later",
   "e7a50ab49cdfd076": "Генерация… ({count})",
   "6523a0ca24b57fde": "Сгенерировать названия заново ({count})",

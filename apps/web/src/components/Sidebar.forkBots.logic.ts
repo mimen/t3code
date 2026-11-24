@@ -46,7 +46,7 @@ export function resolveBotsSection<T extends BotThread>(
       ({ thread, state }) =>
         isRoute(thread) || (input.expanded && (input.showAll || state === "needs-you")),
     )
-    .map(({ thread, state }) => ({ thread, dimmed: state !== "needs-you" }));
+    .map(({ thread, state }) => ({ thread, state, dimmed: state !== "needs-you" }));
   return {
     rows,
     needsYouCount: states.filter(({ state }) => state === "needs-you").length,

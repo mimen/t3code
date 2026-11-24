@@ -2,14 +2,15 @@ import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environ
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ForkBot } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { useGT } from "gt-react";
-import { BotIcon, EyeIcon, EyeOffIcon } from "lucide-react";
+import { T, useGT } from "gt-react";
+import { BotIcon, EyeIcon, EyeOffIcon, HistoryIcon } from "lucide-react";
 import { createElement, lazy, Suspense, useState } from "react";
 
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { cn } from "../lib/utils";
 import { useForkBot, useForkBotsPrefetch } from "../state/forkBots";
-import { resolveBotsSection } from "./Sidebar.forkBots.logic";
+import { type BotRowState, resolveBotsSection } from "./Sidebar.forkBots.logic";
+import { RelativeTimeLabel } from "./sidebar/SidebarThreadRow";
 import { SortableSidebarMarker } from "./sidebar/SidebarListMarkers";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { Spinner } from "./ui/spinner";
@@ -30,10 +31,11 @@ export function useBotsSection(
     threads: bots,
     expanded,
     showAll,
-    dimmedKeys: new Set(
-      section.rows.flatMap(({ thread, dimmed }) =>
-        dimmed ? [scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))] : [],
-      ),
+    rowStates: new Map(
+      section.rows.map(({ thread, state }) => [
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+        state,
+      ]),
     ),
     toggle: () => setExpanded((value) => !value),
     toggleShowAll: () => setShowAll((value) => !value),
@@ -130,9 +132,64 @@ export function ForkBotIcon(props: {
   );
 }
 
-export function SidebarBotIcon(props: {
+function SidebarBotIcon(props: {
   readonly environmentId: EnvironmentId;
   readonly botId: string | null;
 }) {
   return <ForkBotIcon bot={useForkBot(props.environmentId, props.botId)} />;
+}
+
+/** The one status a bot row shows: a spinner while it runs, a dot in its color while it needs you. */
+function SidebarBotStatus(props: {
+  readonly environmentId: EnvironmentId;
+  readonly botId: string | null;
+  readonly state: Exclude<BotRowState, "quiet">;
+}) {
+  const gt = useGT();
+  const color = useForkBot(props.environmentId, props.botId)?.color;
+  if (props.state === "working") return <Spinner size="xs" tone="muted" />;
+  return (
+    <span
+      className={cn("size-1.5 shrink-0 rounded-full", color === undefined && "bg-primary")}
+      style={color === undefined ? undefined : { backgroundColor: color }}
+    >
+      <span className="sr-only">{gt("Needs you", { $context: "bot row status" })}</span>
+    </span>
+  );
+}
+
+function SidebarBotLastRun(props: { readonly timestamp: string | null }) {
+  if (props.timestamp === null) return null;
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <HistoryIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />
+      <div className="min-w-0 truncate text-foreground/75">
+        <T>
+          Last run <RelativeTimeLabel timestamp={props.timestamp} />
+        </T>
+      </div>
+    </div>
+  );
+}
+
+/** What a bot row draws beyond an ordinary row: its icon, its status slot, and its last run on hover. */
+export function sidebarBotRow(
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "botId" | "latestRun">,
+  state: BotRowState | undefined,
+) {
+  const botState = state ?? "quiet";
+  const lastRun = thread.latestRun?.completedAt ?? thread.latestRun?.startedAt ?? null;
+  return {
+    icon: <SidebarBotIcon environmentId={thread.environmentId} botId={thread.botId} />,
+    dimmed: botState !== "needs-you",
+    status:
+      botState === "quiet" ? null : (
+        <SidebarBotStatus
+          environmentId={thread.environmentId}
+          botId={thread.botId}
+          state={botState}
+        />
+      ),
+    tooltipLine: <SidebarBotLastRun timestamp={lastRun} />,
+  };
 }
