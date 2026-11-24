@@ -3724,7 +3724,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         }
                         switch (item.marker) {
                           case "bots-header": // fork: bots
-                            items.push(<BotsHeader key="bots-header" section={botsSection} />);
+                            items.push(
+                              <BotsHeader
+                                key="bots-header"
+                                section={botsSection}
+                                onOpenThread={navigateToThread}
+                              />,
+                            );
                             break;
                           case "bots-end": // fork: bots
                             items.push(<BotsEnd key="bots-end" />);

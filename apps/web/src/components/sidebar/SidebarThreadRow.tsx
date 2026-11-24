@@ -1337,7 +1337,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           metaLine !== null && multiline && "[contain-intrinsic-size:auto_--spacing(13.5)]",
           bot && "[contain-intrinsic-size:auto_--spacing(7)]", // fork: bots
           sortable?.isDragging && "relative z-20",
-          props.bot?.dimmed && "opacity-55", // fork: bots
+          bot && "-mb-px bg-sidebar-control-surface px-0.5 pb-px", // fork: bots
         )}
       >
         <Tooltip disabled={isRenaming || sortable?.isDragging}>
@@ -1361,6 +1361,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     ? "flex flex-col justify-center px-2.5 py-1.5"
                     : "flex h-9 items-center gap-2.5 px-2.5",
                   bot && "h-7", // fork: bots
+                  props.bot?.dimmed && "opacity-55", // fork: bots
                   // Lines titles up with the folder name, past its chevron and icon.
                   inFolder && "ps-9",
                 )}
