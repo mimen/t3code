@@ -31,8 +31,7 @@ import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { threadEnvironment } from "../state/threads";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope } from "../state/session";
-import { readForkRoleMenuState, useSetThreadRole } from "../state/forkRoles"; // fork: roles
-import { forkRoleFromMenuId } from "../components/threadActionMenu.forkRoles"; // fork: roles
+import { readForkRoleMenuState, useForkRoleMenuHandler } from "../state/forkRoles"; // fork: roles
 import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
@@ -94,7 +93,7 @@ export function useThreadActionMenu(input: {
     markThreadUnread,
     turnThreadIntoProject,
   } = useThreadActions();
-  const setThreadRole = useSetThreadRole(); // fork: roles
+  const handleForkRoleMenu = useForkRoleMenuHandler(); // fork: roles
   const regenerateThreadTitle = useOrchestrationCommand(threadEnvironment.regenerateTitle, {
     reportFailure: false,
   });
@@ -172,8 +171,7 @@ export function useThreadActionMenu(input: {
         );
         return;
       }
-      const pickedRole = forkRoleFromMenuId(action); // fork: roles
-      if (pickedRole !== undefined) return void (await setThreadRole(threadRef, pickedRole)); // fork: roles
+      if (await handleForkRoleMenu(threadRef, thread, action)) return; // fork: roles
       if (action.startsWith("snooze:")) {
         const preset =
           action === "snooze:custom"

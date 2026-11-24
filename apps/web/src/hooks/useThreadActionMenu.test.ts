@@ -66,7 +66,7 @@ vi.mock("../state/threads", () => ({ threadEnvironment: { updateMetadata: "metad
 // fork: roles
 vi.mock("../state/forkRoles", () => ({
   readForkRoleMenuState: () => ({ current: null, list: null }),
-  useSetThreadRole: () => vi.fn(),
+  useForkRoleMenuHandler: () => async () => false,
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand: () => async () => {
