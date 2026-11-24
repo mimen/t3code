@@ -141,6 +141,7 @@ describe("roles block while dragging", () => {
   const items = [
     marker("roles-header"),
     row("role", "roles"),
+    marker("roles-end"),
     marker("pinned-header"),
     row("pinned", "pinned"),
     marker("pinned-divider"),
@@ -154,6 +155,7 @@ describe("roles block while dragging", () => {
   it("takes no drops and keeps role rows out of the pinned order", () => {
     expect(resolveSidebarDropTarget(items, "active", "role")).toBeNull();
     expect(resolveSidebarDropTarget(items, "active", "roles-header")).toBeNull();
+    expect(resolveSidebarDropTarget(items, "active", "roles-end")).toBeNull();
     expect(resolveSidebarDropTarget(items, "active", "pinned")).toMatchObject({
       section: "pinned",
       pinnedOrder: ["active", "pinned"],
@@ -184,6 +186,7 @@ describe("roles block while dragging", () => {
       strategy({ ...args, index: items.findIndex((item) => sidebarListItemId(item) === id) });
     expect(transform(sidebarMarkerId("roles-header"))).toMatchObject({ y: 0, scaleY: 1 });
     expect(transform("role")).toMatchObject({ y: 0, scaleY: 1 });
+    expect(transform(sidebarMarkerId("roles-end"))).toMatchObject({ y: 0, scaleY: 1 });
     expect(transform("pinned")?.y).toBeGreaterThan(0);
   });
 });

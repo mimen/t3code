@@ -40,6 +40,18 @@ export function useRolesSection(
   };
 }
 
+export function RolesEnd() {
+  return (
+    <SortableSidebarMarker
+      marker="roles-end"
+      data-testid="sidebar-roles-end"
+      className="pointer-events-none mx-2.5 flex h-3 items-center"
+    >
+      <div aria-hidden className="h-px flex-1 bg-sidebar-border" />
+    </SortableSidebarMarker>
+  );
+}
+
 export function RolesHeader(props: { readonly section: ReturnType<typeof useRolesSection> }) {
   const { section } = props;
   const gt = useGT();
