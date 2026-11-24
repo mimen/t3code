@@ -12809,5 +12809,9 @@
   "27d76249d09eb69f": "Guía de revisión lista",
   "faa3bb26abb39c93": "Falló la guía de revisión",
   "b7df38b7d8792d78": "Abrir guía",
-  "9e91e9a77b664e4e": "No se pudo iniciar una guía de revisión"
+  "9e91e9a77b664e4e": "No se pudo iniciar una guía de revisión",
+  "0e7a9e81871eb0e7": "Se muestra para esta máquina en todas las apps conectadas a ella y en los entornos vinculados. Déjalo vacío para usar el nombre del equipo.",
+  "3bef5861c1c6ea18": "Restablecer el nombre del entorno",
+  "0b37c94707e6766b": "Nombre del entorno",
+  "ed068b23fe857b54": "máquina equipo renombrar etiqueta título barra lateral vinculado mini portátil"
 }

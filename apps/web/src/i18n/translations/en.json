@@ -12823,5 +12823,9 @@
   "27d76249d09eb69f": "Review guide ready",
   "faa3bb26abb39c93": "Review guide failed",
   "b7df38b7d8792d78": "Open guide",
-  "9e91e9a77b664e4e": "Could not start a review guide"
+  "9e91e9a77b664e4e": "Could not start a review guide",
+  "0e7a9e81871eb0e7": "Shown for this machine in every app connected to it and in linked environments. Leave empty to use the computer's name.",
+  "3bef5861c1c6ea18": "Reset environment name",
+  "0b37c94707e6766b": "Environment name",
+  "ed068b23fe857b54": "machine computer rename label title sidebar linked mini laptop"
 }

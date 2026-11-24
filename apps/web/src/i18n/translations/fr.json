@@ -12814,5 +12814,9 @@
   "27d76249d09eb69f": "Guide de revue prêt",
   "faa3bb26abb39c93": "Échec du guide de revue",
   "b7df38b7d8792d78": "Ouvrir le guide",
-  "9e91e9a77b664e4e": "Impossible de démarrer un guide de revue"
+  "9e91e9a77b664e4e": "Impossible de démarrer un guide de revue",
+  "0e7a9e81871eb0e7": "Affiché pour cette machine dans chaque app qui y est connectée et dans les environnements liés. Laissez vide pour utiliser le nom de l’ordinateur.",
+  "3bef5861c1c6ea18": "Réinitialiser le nom de l’environnement",
+  "0b37c94707e6766b": "Nom de l’environnement",
+  "ed068b23fe857b54": "machine ordinateur renommer libellé titre barre latérale lié mini portable"
 }

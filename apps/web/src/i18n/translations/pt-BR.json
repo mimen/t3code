@@ -12814,5 +12814,9 @@
   "27d76249d09eb69f": "Guia de revisão pronto",
   "faa3bb26abb39c93": "O guia de revisão falhou",
   "b7df38b7d8792d78": "Abrir guia",
-  "9e91e9a77b664e4e": "Não foi possível iniciar um guia de revisão"
+  "9e91e9a77b664e4e": "Não foi possível iniciar um guia de revisão",
+  "0e7a9e81871eb0e7": "Exibido para esta máquina em todos os apps conectados a ela e nos ambientes vinculados. Deixe vazio para usar o nome do computador.",
+  "3bef5861c1c6ea18": "Redefinir o nome do ambiente",
+  "0b37c94707e6766b": "Nome do ambiente",
+  "ed068b23fe857b54": "máquina computador renomear rótulo título barra lateral vinculado mini notebook"
 }

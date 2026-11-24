@@ -12821,5 +12821,9 @@
   "27d76249d09eb69f": "Granskningsguiden är klar",
   "faa3bb26abb39c93": "Granskningsguiden misslyckades",
   "b7df38b7d8792d78": "Öppna guiden",
-  "9e91e9a77b664e4e": "Kunde inte starta en granskningsguide"
+  "9e91e9a77b664e4e": "Kunde inte starta en granskningsguide",
+  "0e7a9e81871eb0e7": "Visas för den här datorn i alla appar som är anslutna till den och i länkade miljöer. Lämna tomt för att använda datorns namn.",
+  "3bef5861c1c6ea18": "Återställ miljönamnet",
+  "0b37c94707e6766b": "Miljönamn",
+  "ed068b23fe857b54": "dator maskin byt namn etikett titel sidofält länkad mini bärbar"
 }

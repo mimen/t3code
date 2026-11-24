@@ -48,6 +48,7 @@ import { LocalEnvironmentSetting } from "./LocalEnvironmentSetting";
 import { useSearchableSetting } from "./settingsSearch";
 import { ConnectDeviceApprovalSettings } from "./ConnectDeviceApprovalSettings";
 import { EnvironmentIconMenu } from "./EnvironmentIconPicker";
+import { ForkEnvironmentNameRow } from "./ForkEnvironmentNameRow"; // fork: env-name
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { EnvironmentsMap } from "./EnvironmentsMap";
 import { LinkedEnvironmentsSettings } from "./LinkedEnvironmentsSettings";
@@ -1339,6 +1340,11 @@ function ConnectionsSettingsContent({
                 <ManagedByOrganization policy={accessServerConfig.managedPolicy} />
               </div>
             ) : null}
+            {/* fork: env-name */}
+            <ForkEnvironmentNameRow
+              environmentId={accessEnvironmentId}
+              serverConfig={accessServerConfig}
+            />
             {canManageLocalBackend ? (
               <SettingsRow
                 title={gt("Version")}

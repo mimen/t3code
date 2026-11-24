@@ -1355,6 +1355,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/projects",
     searchTerms: [msg("tracked folders multi repo workspace code-workspace rescan add folder")],
   },
+  // fork: env-name
+  {
+    id: "fork-environment-name",
+    title: msg("Environment name"),
+    to: "/settings/access",
+    targetId: "connections-environment",
+    searchTerms: [msg("machine computer rename label title sidebar linked mini laptop")],
+  },
   {
     id: "environment-icon",
     title: msg("Environment icon"),
