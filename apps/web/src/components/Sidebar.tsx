@@ -143,7 +143,7 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import { LaterShelfHeader, useLaterShelf } from "./Sidebar.forkLater"; // fork: later-shelf
 import { timedSnoozePresets } from "@t3tools/client-runtime/state/thread-settled"; // fork: later-shelf
 import { laterMenuItem } from "./threadActionMenu.forkLater"; // fork: later-shelf
-import { BotsEnd, BotsHeader, SidebarBotIcon, useBotsSection } from "./Sidebar.forkBots"; // fork: bots
+import { BotsEnd, BotsHeader, sidebarBotRow, useBotsSection } from "./Sidebar.forkBots"; // fork: bots
 import { splitBotThreads } from "./Sidebar.forkBots.logic"; // fork: bots
 import { readForkBotMenuState, useForkBotMenuHandler } from "../state/forkBots"; // fork: bots
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -3581,15 +3581,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             variant={section === "bots" ? "bot" : rowVariant} // fork: bots
                             bot={
                               section === "bots" // fork: bots
-                                ? {
-                                    icon: (
-                                      <SidebarBotIcon
-                                        environmentId={thread.environmentId}
-                                        botId={thread.botId}
-                                      />
-                                    ),
-                                    dimmed: botsSection.dimmedKeys.has(threadKey),
-                                  }
+                                ? sidebarBotRow(thread, botsSection.rowStates.get(threadKey))
                                 : undefined
                             }
                             navigationParent={

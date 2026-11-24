@@ -103,6 +103,18 @@ describe("resolveBotsSection", () => {
     ]);
   });
 
+  it("gives each row the state its one status slot shows", () => {
+    const states = resolveBotsSection(all, { ...closed, showAll: true }).rows.map(
+      ({ thread, state }) => [thread.title, state],
+    );
+    expect(states).toEqual([
+      ["Completed", "needs-you"],
+      ["Settled", "quiet"],
+      ["Unread", "needs-you"],
+      ["Working", "working"],
+    ]);
+  });
+
   it("keeps the routed bot visible while hidden or collapsed", () => {
     expect(titles(resolveBotsSection(all, { ...closed, routeThreadKey: keyOf(settled) }))).toEqual([
       "Completed",

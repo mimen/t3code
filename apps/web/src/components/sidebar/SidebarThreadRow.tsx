@@ -156,7 +156,8 @@ function compactSidebarTimeLabel(timestamp: string, nowMs: number, resolve: Mess
 
 // Subscribes to the minute tick itself, so only the label re-renders each
 // minute. The minute is passed as the clock so it is the formatter's input.
-function RelativeTimeLabel(props: { timestamp: string | null }) {
+export function RelativeTimeLabel(props: { timestamp: string | null }) {
+  // fork: bots
   const nowMinute = useNowMinute();
   const m = useMessages();
   return props.timestamp === null
@@ -267,6 +268,7 @@ function SidebarThreadTooltip({
   branchMismatch,
   terminalStatus,
   terminalProcessCount,
+  extra, // fork: bots
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -284,6 +286,7 @@ function SidebarThreadTooltip({
   } | null;
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
+  extra?: ReactNode; // fork: bots
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const worktreePath = thread.worktreePath?.trim();
@@ -398,6 +401,7 @@ function SidebarThreadTooltip({
             </div>
           </div>
         ) : null}
+        {extra}
       </ThreadHoverCard>
     </ThreadHoverCardPopup>
   );
@@ -585,7 +589,14 @@ type SidebarThreadRowProps = {
   // "folder" is a one-line row inside a boring sidebar project folder;
   // "folder-multiline" adds the card's environment and PR line under it.
   variant: "card" | "slim" | "folder" | "folder-multiline" | "bot"; // fork: bots
-  bot?: { readonly icon: ReactNode; readonly dimmed: boolean } | undefined; // fork: bots
+  bot?:
+    | {
+        readonly icon: ReactNode;
+        readonly dimmed: boolean;
+        readonly status: ReactNode;
+        readonly tooltipLine: ReactNode;
+      }
+    | undefined; // fork: bots
   navigationParent?: string | undefined;
   variantAction: SidebarSweepAction;
   settlementSupported: boolean;
@@ -885,6 +896,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       branchMismatch={branchMismatch}
       terminalStatus={terminalStatus}
       terminalProcessCount={terminalProcessCount}
+      extra={props.bot?.tooltipLine} // fork: bots
     />
   );
 
@@ -1313,8 +1325,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   if (variant !== "card") {
     const bot = variant === "bot"; // fork: bots
-    const multiline = variant === "folder-multiline" || bot; // fork: bots
-    const inFolder = variant === "folder" || variant === "folder-multiline"; // fork: bots
+    const multiline = variant === "folder-multiline";
+    const inFolder = variant === "folder" || multiline;
     return (
       <li
         data-thread-item={threadKey}
@@ -1323,6 +1335,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         className={cn(
           "list-none [content-visibility:auto] [contain-intrinsic-size:auto_--spacing(9)]",
           metaLine !== null && multiline && "[contain-intrinsic-size:auto_--spacing(13.5)]",
+          bot && "[contain-intrinsic-size:auto_--spacing(7)]", // fork: bots
           sortable?.isDragging && "relative z-20",
           props.bot?.dimmed && "opacity-55", // fork: bots
         )}
@@ -1347,6 +1360,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   multiline
                     ? "flex flex-col justify-center px-2.5 py-1.5"
                     : "flex h-9 items-center gap-2.5 px-2.5",
+                  bot && "h-7", // fork: bots
                   // Lines titles up with the folder name, past its chevron and icon.
                   inFolder && "ps-9",
                 )}
@@ -1378,8 +1392,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {title}
               {multiline ? titleLineIcons : null}
               {pinIndicator}
-              {multiline ? null : terminalStatusIcon}
-              {multiline ? null : issueBadge}
+              {multiline || bot ? null : terminalStatusIcon /* fork: bots */}
+              {multiline || bot ? null : issueBadge /* fork: bots */}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   <T>Regenerating title</T>
@@ -1428,7 +1442,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           <T>Dismiss Woke notification</T>
                         </TooltipPopup>
                       </Tooltip>
-                    ) : (inFolder || bot) && topStatus ? ( // fork: bots
+                    ) : bot && props.bot?.status ? ( // fork: bots
+                      props.bot.status
+                    ) : inFolder && topStatus ? (
                       // Folder rows have no status line, so the status takes the time slot.
                       <span
                         className={cn(
