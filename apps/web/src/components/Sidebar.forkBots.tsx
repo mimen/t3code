@@ -10,7 +10,10 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import { cn } from "../lib/utils";
 import { useForkBot, useForkBotsPrefetch } from "../state/forkBots";
 import {
+  type BotNotice,
   type BotRowState,
+  type BotThread,
+  botNotice,
   botRowState,
   botWantsYou,
   resolveBotsSection,
@@ -98,12 +101,7 @@ export function BotsHeader(props: {
             {label}
           </span>
           {dock.slice(0, DOCK_LIMIT).map((thread) => (
-            <BotDockChip
-              key={thread.id}
-              thread={thread}
-              asking={botRowState(thread) === "asking"}
-              onOpenThread={props.onOpenThread}
-            />
+            <BotDockChip key={thread.id} thread={thread} onOpenThread={props.onOpenThread} />
           ))}
           {dock.length > DOCK_LIMIT ? (
             <span className="text-sidebar-muted-foreground tabular-nums">
@@ -133,13 +131,12 @@ export function BotsHeader(props: {
 }
 
 function BotDockChip(props: {
-  readonly thread: Pick<EnvironmentThreadShell, "environmentId" | "id" | "botId" | "title">;
-  readonly asking: boolean;
+  readonly thread: BotThread;
   readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
 }) {
   const { thread } = props;
   const bot = useForkBot(thread.environmentId, thread.botId);
-  const asking = props.asking;
+  const notice = botNotice(botRowState(thread), thread) ?? "done";
   return (
     <Tooltip>
       <TooltipTrigger
@@ -157,9 +154,8 @@ function BotDockChip(props: {
           aria-hidden
           className={cn(
             "absolute -top-0.5 -right-0.5 size-1.5 rounded-full ring-2 ring-sidebar-control-surface",
-            asking ? "bg-warning" : bot?.color === undefined && "bg-primary",
+            NOTICE_DOT_CLASS[notice],
           )}
-          style={asking || bot?.color === undefined ? undefined : { backgroundColor: bot.color }}
         />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{thread.title}</TooltipPopup>
@@ -207,20 +203,22 @@ function SidebarBotIcon(props: {
 }
 
 /** The one status a bot row shows: a spinner while it runs, a dot in its color while it needs you. */
-function SidebarBotStatus(props: {
-  readonly environmentId: EnvironmentId;
-  readonly botId: string | null;
-  readonly state: Exclude<BotRowState, "quiet" | "asking">;
-}) {
+const NOTICE_DOT_CLASS = {
+  asking: "bg-warning",
+  failed: "bg-error",
+  done: "bg-success",
+} satisfies Record<BotNotice, string>;
+
+function SidebarBotStatus(props: { readonly notice: Exclude<BotNotice, "asking"> | null }) {
   const gt = useGT();
-  const color = useForkBot(props.environmentId, props.botId)?.color;
-  if (props.state === "working") return <Spinner size="xs" tone="muted" />;
+  if (props.notice === null) return <Spinner size="xs" tone="muted" />;
   return (
-    <span
-      className={cn("size-1.5 shrink-0 rounded-full", color === undefined && "bg-primary")}
-      style={color === undefined ? undefined : { backgroundColor: color }}
-    >
-      <span className="sr-only">{gt("Needs you", { $context: "bot row status" })}</span>
+    <span className={cn("size-1.5 shrink-0 rounded-full", NOTICE_DOT_CLASS[props.notice])}>
+      <span className="sr-only">
+        {props.notice === "failed"
+          ? gt("Failed, needs you", { $context: "bot row status" })
+          : gt("Needs you", { $context: "bot row status" })}
+      </span>
     </span>
   );
 }
@@ -245,20 +243,19 @@ export function sidebarBotRow(
   state: BotRowState | undefined,
 ) {
   const botState = state ?? "quiet";
-  // An asking bot shows the row's own "Awaiting Input" or "Pending Approval" status instead.
+  const notice = botNotice(botState, thread);
   const lastRun = thread.latestRun?.completedAt ?? thread.latestRun?.startedAt ?? null;
   return {
     icon: <SidebarBotIcon environmentId={thread.environmentId} botId={thread.botId} />,
     dimmed: !botWantsYou(botState),
     urgent: botState === "asking",
+    // An asking bot shows the row's own "Awaiting Input" or "Pending Approval" status instead.
     status:
-      botState === "quiet" || botState === "asking" ? null : (
-        <SidebarBotStatus
-          environmentId={thread.environmentId}
-          botId={thread.botId}
-          state={botState}
-        />
-      ),
+      botState === "working" ? (
+        <SidebarBotStatus notice={null} />
+      ) : notice === "done" || notice === "failed" ? (
+        <SidebarBotStatus notice={notice} />
+      ) : null,
     tooltipLine: <SidebarBotLastRun timestamp={lastRun} />,
   };
 }

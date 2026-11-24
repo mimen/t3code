@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   type BotThread,
+  botNotice,
   resolveBotsSection,
   botRowState,
   splitBotThreads,
@@ -83,6 +84,17 @@ describe("botRowState", () => {
   it("is quiet once settled, and working while it runs", () => {
     expect(botRowState(settled)).toBe("quiet");
     expect(botRowState(working)).toBe("working");
+  });
+});
+
+describe("botNotice", () => {
+  it("colors by the kind of notice, not by the bot", () => {
+    const of = (thread: BotThread) => botNotice(botRowState(thread), thread);
+    expect(of(completed)).toBe("done");
+    expect(of(unread)).toBe("failed");
+    expect(of(bot("Asking", { hasPendingUserInput: true }))).toBe("asking");
+    expect(of(settled)).toBeNull();
+    expect(of(working)).toBeNull();
   });
 });
 

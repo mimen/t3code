@@ -16,6 +16,18 @@ export function botWantsYou(state: BotRowState): boolean {
   return state === "asking" || state === "needs-you";
 }
 
+/** What a bot's dot says, colored by the kind of notice rather than by the bot. */
+export type BotNotice = "asking" | "failed" | "done";
+
+export function botNotice(
+  state: BotRowState,
+  thread: Pick<BotThread, "latestRun">,
+): BotNotice | null {
+  if (state === "asking") return "asking";
+  if (state !== "needs-you") return null;
+  return thread.latestRun?.status === "failed" ? "failed" : "done";
+}
+
 export function botRowState(thread: BotThread): BotRowState {
   if (
     thread.hasPendingApprovals ||
