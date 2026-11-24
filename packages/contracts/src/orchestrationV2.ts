@@ -3889,6 +3889,8 @@ const OrchestrationV2InternalCommand = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     projectId: ProjectId,
+    /** fork: thread-project-move. A thread with its own folder keeps it in a project rooted elsewhere. */
+    keepWorktreePath: Schema.optional(Schema.Boolean),
   }),
   /**
    * After a push, the thread's watches forget whether their checks were running, since the push

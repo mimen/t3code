@@ -23,6 +23,8 @@ import {
   SourceControlCloneRepositoryResult,
 } from "@t3tools/contracts";
 import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path"; // fork: thread-project-move
+import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts"; // fork: thread-project-move
 import * as DocumentText from "../../../provider/DocumentText.ts";
 import * as ServerConfig from "../../../config.ts";
 import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
@@ -200,6 +202,26 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
 
+// fork: thread-project-move
+const ThreadMoveProjectTool = Tool.make("t3_thread_move_project", {
+  ...shared,
+  description:
+    "Move an idle No project thread into another project. Threads sharing its folder and their scheduled tasks move too; the folder and cwd stay.",
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    threadId: ThreadId,
+    projectId: ProjectId,
+  }),
+  success: Schema.Struct({ projectId: ProjectId, threadIds: Schema.Array(ThreadId) }),
+  dependencies: [
+    ...shared.dependencies,
+    ManagedProjectFolders.ManagedProjectFolders,
+    ScheduledTaskService.ScheduledTaskService,
+    FileSystem.FileSystem,
+    Path.Path,
+  ],
+}).annotate(Tool.Destructive, true);
+
 export const ProjectToolkit = Toolkit.make(
   ThreadLaunchTool,
   ProjectListTool,
@@ -208,4 +230,5 @@ export const ProjectToolkit = Toolkit.make(
   ProjectUpdateTool,
   ProjectDeleteTool,
   ProjectCloneTool,
+  ThreadMoveProjectTool, // fork: thread-project-move
 );

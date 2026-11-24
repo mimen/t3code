@@ -5954,7 +5954,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
     // The thread always lands in the project root, so the move must not change its cwd.
     const cwd = thread.worktreePath ?? Option.getOrUndefined(current)?.workspaceRoot;
-    if (cwd !== target.value.workspaceRoot) {
+    // fork: thread-project-move. Keeping the thread's own folder also keeps its cwd.
+    const keepFolder =
+      command.keepWorktreePath === true &&
+      thread.worktreePath !== null &&
+      cwd !== target.value.workspaceRoot;
+    if (cwd !== target.value.workspaceRoot && !keepFolder) {
       return yield* reject(`does not work in ${target.value.workspaceRoot}.`);
     }
     const now = yield* DateTime.now;
@@ -5966,7 +5971,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       threadId: command.threadId,
       providerInstanceId: thread.providerInstanceId,
       occurredAt: now,
-      payload: { ...thread, projectId: command.projectId, worktreePath: null, updatedAt: now },
+      payload: {
+        ...thread,
+        projectId: command.projectId,
+        worktreePath: keepFolder ? thread.worktreePath : null, // fork: thread-project-move
+        updatedAt: now,
+      },
     });
   });
 

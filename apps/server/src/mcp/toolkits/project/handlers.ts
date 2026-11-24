@@ -43,6 +43,8 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestrationMcp from "../../OrchestratorMcpService.ts";
 import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
+import { readThread } from "../../threadAccess.ts"; // fork: thread-project-move
+import { moveThreadToProject } from "../../../project/ForkThreadProjectMove.ts"; // fork: thread-project-move
 import { ProjectToolkit } from "./tools.ts";
 
 const isAboveCeilingError = Schema.is(OrchestratorRuntimeModeAboveCeilingError);
@@ -581,6 +583,19 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
     // Linked work may bring the repository it works in; an existing
     // registered workspace is still refused.
     { linkedCallers: "allowed" },
+  ),
+  // fork: thread-project-move
+  t3_thread_move_project: McpToolAccess.writesEnvironment((input) =>
+    readThread(input.threadId).pipe(
+      Effect.flatMap(({ projection }) =>
+        moveThreadToProject({ threadId: projection.thread.id, projectId: input.projectId }).pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "invalid_request", message: error.reason }),
+          ),
+        ),
+      ),
+    ),
   ),
   t3_project_update: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {

@@ -94,6 +94,8 @@ import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ScratchThreadPromotion from "../project/ScratchThreadPromotion.ts";
+import * as ForkThreadProjectMove from "../project/ForkThreadProjectMove.ts"; // fork: thread-project-move
+import * as HostProcess from "@t3tools/shared/HostProcess"; // fork: thread-project-move
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -14572,3 +14574,167 @@ it.layer(layerQueueResumeDisabledInstanceTest)(
     );
   },
 );
+
+// fork: thread-project-move
+const MOVE_HOME = "/tmp/runtime-layer-move-home";
+const MOVE_SCRATCH_ROOT = "/tmp/runtime-layer-move-scratch";
+const MOVE_SCRATCH_PROJECT_ID = ProjectId.make("runtime-layer-move-scratch");
+const layerThreadProjectMoveTest = Layer.mergeAll(
+  Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+    scratchRoot: Effect.succeedSome(MOVE_SCRATCH_ROOT),
+    isScratchProject: (projectId) => Effect.succeed(projectId === MOVE_SCRATCH_PROJECT_ID),
+    namedProjectsRoot: "/projects",
+  }),
+  NodeServices.layer,
+  NodeCrypto.layer,
+).pipe(Layer.provideMerge(layerProjectDeletionTest));
+
+it.layer(layerThreadProjectMoveTest)("moving a No project thread into a project", (it) => {
+  const move = (threadId: ThreadId, projectId: ProjectId) =>
+    ForkThreadProjectMove.moveThreadToProject({ threadId, projectId }).pipe(
+      Effect.provideService(HostProcess.HomeDirectory, MOVE_HOME),
+    );
+  const createProject = (projectId: ProjectId, workspaceRoot: string) =>
+    ProjectService.ProjectService.pipe(
+      Effect.flatMap((projects) =>
+        projects.create({
+          commandId: CommandId.make(`${projectId}-create`),
+          projectId,
+          title: projectId,
+          workspaceRoot,
+        }),
+      ),
+    );
+  const createThread = (threadId: ThreadId, projectId: ProjectId, worktreePath: string | null) =>
+    Orchestrator.OrchestratorV2.pipe(
+      Effect.flatMap((orchestrator) =>
+        orchestrator.dispatch({
+          type: "thread.create",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`${threadId}-create`),
+          threadId,
+          projectId,
+          title: threadId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath,
+        }),
+      ),
+      Effect.as(threadId),
+    );
+  const shellOf = (threadId: ThreadId) =>
+    Orchestrator.OrchestratorV2.pipe(
+      Effect.flatMap((orchestrator) => orchestrator.getThreadShell(threadId)),
+    );
+
+  it.effect("keeps the folder of every thread in it and moves their tasks", () =>
+    Effect.gen(function* () {
+      const tasks = yield* ScheduledTaskService.ScheduledTaskService;
+      const targetId = ProjectId.make("runtime-layer-move-target");
+      const folder = `${MOVE_SCRATCH_ROOT}/2026-01-01-keep-a1b2c3d4`;
+      yield* createProject(MOVE_SCRATCH_PROJECT_ID, MOVE_SCRATCH_ROOT);
+      yield* createProject(targetId, "/tmp/runtime-layer-move-target");
+      const threadId = yield* createThread(
+        ThreadId.make("move-keep-main"),
+        MOVE_SCRATCH_PROJECT_ID,
+        folder,
+      );
+      const childId = yield* createThread(
+        ThreadId.make("move-keep-child"),
+        MOVE_SCRATCH_PROJECT_ID,
+        folder,
+      );
+      const otherId = yield* createThread(
+        ThreadId.make("move-keep-other"),
+        MOVE_SCRATCH_PROJECT_ID,
+        `${MOVE_SCRATCH_ROOT}/2026-01-01-elsewhere`,
+      );
+      const { task } = yield* tasks.upsert({
+        id: ScheduledTaskId.make("move-keep-bound"),
+        title: "Bound",
+        prompt: "Check in",
+        enabled: true,
+        schedule: { type: "interval", everyMs: 60_000 },
+        projectId: MOVE_SCRATCH_PROJECT_ID,
+        threadId: childId,
+        workspaceStrategy: { type: "root" },
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdBy: "user",
+        creationSource: "web",
+      });
+
+      const result = yield* move(threadId, targetId);
+
+      assert.deepEqual([...result.threadIds].toSorted(), [childId, threadId].toSorted());
+      for (const id of [threadId, childId]) {
+        const shell = yield* shellOf(id);
+        assert.equal(shell?.projectId, targetId);
+        assert.equal(shell?.worktreePath, folder);
+      }
+      assert.equal((yield* shellOf(otherId))?.projectId, MOVE_SCRATCH_PROJECT_ID);
+      const saved = (yield* tasks.list()).tasks.find((candidate) => candidate.id === task.id);
+      assert.equal(saved?.projectId, targetId);
+      assert.deepEqual((yield* move(threadId, targetId)).threadIds, []);
+    }),
+  );
+
+  it.effect("accepts a No project left in the default T3 home's scratch folder", () =>
+    Effect.gen(function* () {
+      const legacyId = ProjectId.make("runtime-layer-move-legacy");
+      const targetId = ProjectId.make("runtime-layer-move-legacy-target");
+      const legacyRoot = `${MOVE_HOME}/.t3/scratch`;
+      yield* createProject(legacyId, legacyRoot);
+      yield* createProject(targetId, "/tmp/runtime-layer-move-legacy-target");
+      const threadId = yield* createThread(
+        ThreadId.make("move-legacy"),
+        legacyId,
+        `${legacyRoot}/2026-01-01-legacy-a1b2c3d4`,
+      );
+
+      yield* move(threadId, targetId);
+
+      const shell = yield* shellOf(threadId);
+      assert.equal(shell?.projectId, targetId);
+      assert.equal(shell?.worktreePath, `${legacyRoot}/2026-01-01-legacy-a1b2c3d4`);
+    }),
+  );
+
+  it.effect("still refuses a cross-folder move for a thread outside No project", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sourceId = ProjectId.make("runtime-layer-move-regular");
+      const targetId = ProjectId.make("runtime-layer-move-regular-target");
+      yield* createProject(sourceId, "/tmp/runtime-layer-move-regular");
+      yield* createProject(targetId, "/tmp/runtime-layer-move-regular-target");
+      const threadId = yield* createThread(
+        ThreadId.make("move-regular"),
+        sourceId,
+        "/tmp/runtime-layer-move-regular-worktrees/feature",
+      );
+
+      const refused = yield* move(threadId, targetId).pipe(Effect.flip);
+      assert.equal(
+        refused.message,
+        "Only a No project thread with its own folder can move to another project.",
+      );
+      const adopted = yield* orchestrator
+        .dispatch({
+          type: "thread.project.adopt-folder",
+          commandId: CommandId.make("move-regular-adopt"),
+          threadId,
+          projectId: targetId,
+        })
+        .pipe(Effect.flip);
+      assert.equal(
+        adopted.cause,
+        `Thread ${threadId} does not work in /tmp/runtime-layer-move-regular-target.`,
+      );
+      assert.equal((yield* shellOf(threadId))?.projectId, sourceId);
+    }),
+  );
+});
