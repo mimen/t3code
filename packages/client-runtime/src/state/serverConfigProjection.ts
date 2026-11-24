@@ -153,11 +153,17 @@ export function applyServerConfigProjection(
     case "settingsUpdated":
       return Option.map(current, (projection) => {
         const settings = reuseUnchanged(projection.config.settings, event.payload.settings);
+        const label = event.payload.environmentLabel; // fork: env-name
+        const renamed = label !== undefined && label !== projection.config.environment.label;
         return {
           config:
-            settings === projection.config.settings
+            settings === projection.config.settings && !renamed
               ? projection.config
-              : { ...projection.config, settings },
+              : {
+                  ...projection.config,
+                  settings,
+                  ...(renamed ? { environment: { ...projection.config.environment, label } } : {}),
+                },
           latestEvent: event,
           source: "live",
         };

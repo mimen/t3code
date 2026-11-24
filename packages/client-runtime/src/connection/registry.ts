@@ -38,6 +38,7 @@ import type {
 import { ConnectionBlockedError } from "./model.ts";
 import * as Persistence from "../platform/persistence.ts";
 import * as EnvironmentSupervisor from "./supervisor.ts";
+import { makeForkEnvironmentLabels } from "./forkEnvironmentName.ts"; // fork: env-name
 import * as ConnectionDriver from "./driver.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 import {
@@ -284,6 +285,14 @@ export const make = Effect.gen(function* () {
   }
 
   const leaseLocks = yield* Ref.make<ReadonlyMap<EnvironmentId, LeaseLock>>(new Map());
+  // fork: env-name
+  const forkLabels = makeForkEnvironmentLabels({
+    withLeaseLock: (environmentId, effect) => withLeaseLock(environmentId, effect),
+    entries,
+    serviceScopes,
+    persistedEnvironmentIds,
+    setRoutes: registrations.setRoutes,
+  });
   const leaseLocksGuard = yield* Semaphore.make(1);
   const started = yield* Ref.make(false);
 
@@ -390,6 +399,7 @@ export const make = Effect.gen(function* () {
             ),
             Effect.forkIn(scope),
           );
+          yield* forkLabels.follow(environmentId, supervisor.session).pipe(Effect.forkIn(scope)); // fork: env-name
           return supervisor;
         }),
       ),
@@ -631,7 +641,8 @@ export const make = Effect.gen(function* () {
 
   const installPlatformRegistration = Effect.fn("EnvironmentRegistry.installPlatformRegistration")(
     function* (registration: PlatformConnectionRegistration) {
-      const registered = connectionRegistrationCatalogEntry(registration);
+      // fork: env-name
+      const registered = forkLabels.applyLearned(connectionRegistrationCatalogEntry(registration));
       const target = registered.target;
       return yield* withLeaseLock(
         target.environmentId,
