@@ -3801,15 +3801,15 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         DateTime.toEpochMillis(untaggedShell.updatedAt),
       );
       yield* orchestrator.dispatch({
-        type: "thread.role.set",
-        commandId: CommandId.make("runtime-layer-lifecycle-role-set"),
+        type: "thread.bot.set",
+        commandId: CommandId.make("runtime-layer-lifecycle-bot-set"),
         threadId,
-        roleId: "needs-you",
+        botId: "needs-you",
       });
-      const roleShell = shellOf(yield* orchestrator.getShellSnapshot());
-      assert.equal(roleShell.roleId, "needs-you");
+      const botShell = shellOf(yield* orchestrator.getShellSnapshot());
+      assert.equal(botShell.botId, "needs-you");
       assert.equal(
-        DateTime.toEpochMillis(roleShell.updatedAt),
+        DateTime.toEpochMillis(botShell.updatedAt),
         DateTime.toEpochMillis(untaggedShell.updatedAt),
       );
 
@@ -3834,15 +3834,15 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const autoSettledProjection = yield* orchestrator.getThreadProjection(threadId);
       assert.equal(autoSettledProjection.thread.settledOverride, "settled");
       assert.isNull(autoSettledProjection.thread.activeOrderKey);
-      assert.equal(autoSettledProjection.thread.roleId, "needs-you");
-      assert.equal(shellOf(yield* orchestrator.getShellSnapshot()).roleId, "needs-you");
+      assert.equal(autoSettledProjection.thread.botId, "needs-you");
+      assert.equal(shellOf(yield* orchestrator.getShellSnapshot()).botId, "needs-you");
       yield* orchestrator.dispatch({
-        type: "thread.role.set",
-        commandId: CommandId.make("runtime-layer-lifecycle-role-clear"),
+        type: "thread.bot.set",
+        commandId: CommandId.make("runtime-layer-lifecycle-bot-clear"),
         threadId,
-        roleId: null,
+        botId: null,
       });
-      assert.isUndefined(shellOf(yield* orchestrator.getShellSnapshot()).roleId);
+      assert.isUndefined(shellOf(yield* orchestrator.getShellSnapshot()).botId);
       yield* orchestrator.dispatch({
         type: "thread.unsettle",
         commandId: CommandId.make("runtime-layer-lifecycle-auto-unsettle"),

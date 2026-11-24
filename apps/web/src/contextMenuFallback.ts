@@ -12,7 +12,7 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "path", attrs: { d: "M10 12h4" } },
   ],
   check: [{ tag: "path", attrs: { d: "M20 6 9 17l-5-5" } }],
-  // fork: roles
+  // fork: bots
   bot: [
     { tag: "path", attrs: { d: "M12 8V4H8" } },
     { tag: "rect", attrs: { width: "16", height: "12", x: "4", y: "8", rx: "2" } },

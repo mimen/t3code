@@ -3,17 +3,17 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { createForkRolesEnvironmentAtoms } from "@t3tools/client-runtime/state/fork-roles";
+import { createForkBotsEnvironmentAtoms } from "@t3tools/client-runtime/state/fork-bots";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { msg } from "gt-react";
 
 import {
-  FORK_MAKE_ROLE_PROMPT,
-  forkRoleMenuAction,
-  type ForkRoleMenuState,
-} from "../components/threadActionMenu.forkRoles";
+  FORK_MAKE_BOT_PROMPT,
+  forkBotMenuAction,
+  type ForkBotMenuState,
+} from "../components/threadActionMenu.forkBots";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { m } from "../i18n/messages";
@@ -25,65 +25,65 @@ import { serverEnvironment } from "./server";
 import { environmentThreadShells, threadEnvironment } from "./threads";
 import { useOrchestrationCommand } from "./use-orchestration-command";
 
-const roleIdsKeyAtom = Atom.family((environmentId: EnvironmentId) =>
+const botIdsKeyAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get) => {
     const ids = new Set<string>();
     for (const thread of get(environmentThreadShells.threadShellsAtom)) {
-      if (thread.environmentId === environmentId && thread.roleId) ids.add(thread.roleId);
+      if (thread.environmentId === environmentId && thread.botId) ids.add(thread.botId);
     }
     return [...ids].toSorted().join(",");
   }),
 );
 
-const forkRolesEnvironment = createForkRolesEnvironmentAtoms(
+const forkBotsEnvironment = createForkBotsEnvironmentAtoms(
   connectionAtomRuntime,
   serverEnvironment.settingsValueAtom,
-  roleIdsKeyAtom,
+  botIdsKeyAtom,
 );
 
-const rolesListAtom = (environmentId: EnvironmentId) =>
-  forkRolesEnvironment.list({ environmentId, input: {} });
+const botsListAtom = (environmentId: EnvironmentId) =>
+  forkBotsEnvironment.list({ environmentId, input: {} });
 
-function useForkRoles(environmentId: EnvironmentId | null) {
-  return useEnvironmentQuery(environmentId === null ? null : rolesListAtom(environmentId)).data;
+function useForkBots(environmentId: EnvironmentId | null) {
+  return useEnvironmentQuery(environmentId === null ? null : botsListAtom(environmentId)).data;
 }
 
-// ponytail: warms only the primary environment's roles for the first Role menu; a linked one still loads cold.
-export function useForkRolesPrefetch() {
-  useForkRoles(usePrimaryEnvironmentId());
+// ponytail: warms only the primary environment's bots for the first Bot menu; a linked one still loads cold.
+export function useForkBotsPrefetch() {
+  useForkBots(usePrimaryEnvironmentId());
 }
 
-export function useForkRole(environmentId: EnvironmentId, roleId: string | null) {
-  const roles = useForkRoles(roleId === null ? null : environmentId);
-  return roles?.roles.find((role) => role.id === roleId) ?? null;
+export function useForkBot(environmentId: EnvironmentId, botId: string | null) {
+  const bots = useForkBots(botId === null ? null : environmentId);
+  return bots?.bots.find((bot) => bot.id === botId) ?? null;
 }
 
-/** Reading starts the fetch, so a menu opened before the first answer shows roles as loading. */
-export function readForkRoleMenuState(
+/** Reading starts the fetch, so a menu opened before the first answer shows bots as loading. */
+export function readForkBotMenuState(
   environmentId: EnvironmentId,
   current: string | null,
-): ForkRoleMenuState {
+): ForkBotMenuState {
   const settings = appAtomRegistry.get(serverEnvironment.settingsValueAtom(environmentId));
-  if (!settings?.forkRolesDirectory) return { current, list: { directory: null, roles: [] } };
-  const list = AsyncResult.getOrElse(appAtomRegistry.get(rolesListAtom(environmentId)), () => null);
+  if (!settings?.forkBotsDirectory) return { current, list: { directory: null, bots: [] } };
+  const list = AsyncResult.getOrElse(appAtomRegistry.get(botsListAtom(environmentId)), () => null);
   return { current, list };
 }
 
-/** Runs a Role submenu pick and reports a failure as a toast; false for any other menu id. */
-export function useForkRoleMenuHandler() {
-  const setRole = useOrchestrationCommand(threadEnvironment.setRole, { reportFailure: false });
+/** Runs a Bot submenu pick and reports a failure as a toast; false for any other menu id. */
+export function useForkBotMenuHandler() {
+  const setBot = useOrchestrationCommand(threadEnvironment.setBot, { reportFailure: false });
   const startTurn = useOrchestrationCommand(threadEnvironment.startTurn, { reportFailure: false });
   return async (
     target: ScopedThreadRef,
     thread: Pick<EnvironmentThreadShell, "runtimeMode" | "interactionMode">,
     menuId: string,
   ) => {
-    const action = forkRoleMenuAction(menuId);
+    const action = forkBotMenuAction(menuId);
     if (action === undefined) return false;
     const { environmentId, threadId } = target;
     const result =
       action.kind === "set"
-        ? await setRole({ environmentId, input: { threadId, roleId: action.roleId } })
+        ? await setBot({ environmentId, input: { threadId, botId: action.botId } })
         : await startTurn({
             environmentId,
             input: {
@@ -91,7 +91,7 @@ export function useForkRoleMenuHandler() {
               message: {
                 messageId: newMessageId(),
                 role: "user",
-                text: FORK_MAKE_ROLE_PROMPT,
+                text: FORK_MAKE_BOT_PROMPT,
                 attachments: [],
               },
               runtimeMode: thread.runtimeMode,
@@ -105,8 +105,8 @@ export function useForkRoleMenuHandler() {
           type: "error",
           title:
             action.kind === "set"
-              ? m(msg("Failed to change role"))
-              : m(msg("Failed to send {command}", { command: FORK_MAKE_ROLE_PROMPT })),
+              ? m(msg("Failed to change bot"))
+              : m(msg("Failed to send {command}", { command: FORK_MAKE_BOT_PROMPT })),
           description:
             thrownErrorMessage(squashAtomCommandFailure(result), m) ?? m(msg("An error occurred.")),
         }),

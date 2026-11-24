@@ -44,7 +44,7 @@ import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import * as ForkRoles from "./ForkRoles.ts"; // fork: roles
+import * as ForkBots from "./ForkBots.ts"; // fork: bots
 import * as CheckpointService from "./CheckpointService.ts";
 import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -729,7 +729,7 @@ export const layer: Layer.Layer<
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
     const turnAnalytics = yield* ProviderUsageAnalytics.ProviderTurnAnalytics;
     const threadCommands = yield* ThreadCommandExecutor.ThreadCommandExecutor;
-    const forkRoles = yield* ForkRoles.ForkRoles; // fork: roles
+    const forkBots = yield* ForkBots.ForkBots; // fork: bots
 
     const writeFinalRunEvents = Effect.fn("RunExecutionService.writeFinalRunEvents")(
       function* (input: {
@@ -2277,10 +2277,10 @@ export const layer: Layer.Layer<
           mcpAppModelContext,
           input.run.threadId,
         );
-        // fork: roles
-        const roleInstructions = yield* ForkRoles.forkRoleInstructions(
-          forkRoles,
-          input.appThread.roleId,
+        // fork: bots
+        const botInstructions = yield* ForkBots.forkBotInstructions(
+          forkBots,
+          input.appThread.botId,
         );
         const turnInput = {
           appThread: input.appThread,
@@ -2303,7 +2303,7 @@ export const layer: Layer.Layer<
           modelSelection: input.modelSelection,
           runtimePolicy: input.runtimePolicy,
           ...(appContext.length === 0 ? {} : { appContext }),
-          ...(roleInstructions === undefined ? {} : { roleInstructions }), // fork: roles
+          ...(botInstructions === undefined ? {} : { botInstructions }), // fork: bots
         };
         // Check after the context read: ingestion can settle the run while
         // it awaits. A failed ownership read fails the start below.

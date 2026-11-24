@@ -6,10 +6,10 @@ import { msg } from "gt-react";
 import { m, type MessageResolver } from "../i18n/messages";
 import { laterMenuItem } from "./threadActionMenu.forkLater"; // fork: later-shelf
 import {
-  type ForkRoleMenuId,
-  type ForkRoleMenuState,
-  forkRoleMenuItems,
-} from "./threadActionMenu.forkRoles"; // fork: roles
+  type ForkBotMenuId,
+  type ForkBotMenuState,
+  forkBotMenuItems,
+} from "./threadActionMenu.forkBots"; // fork: bots
 
 export type ThreadActionMenuId =
   | "find"
@@ -38,7 +38,7 @@ export type ThreadActionMenuId =
   | "copy-thread-id"
   | "archive"
   | "delete"
-  | ForkRoleMenuId; // fork: roles
+  | ForkBotMenuId; // fork: bots
 
 export type DraftActionMenuId =
   | "copy"
@@ -131,7 +131,7 @@ export interface ThreadActionMenuState {
   readonly canShareWithGuest?: boolean;
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
-  readonly forkRoles?: ForkRoleMenuState; // fork: roles
+  readonly forkBots?: ForkBotMenuState; // fork: bots
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -283,7 +283,7 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
-    ...forkRoleMenuItems(state.forkRoles, resolve), // fork: roles
+    ...forkBotMenuItems(state.forkBots, resolve), // fork: bots
     {
       id: "copy",
       label: resolve(msg("Copy", { $context: "submenu of things to copy" })),

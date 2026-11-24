@@ -10,22 +10,22 @@ import { ProviderInstanceId } from "@t3tools/contracts";
 
 import * as ServerSettings from "../serverSettings.ts";
 import * as CodexAdapterV2 from "./Adapters/CodexAdapterV2.ts";
-import * as ForkRoles from "./ForkRoles.ts";
+import * as ForkBots from "./ForkBots.ts";
 
-const withRoles = (forkRolesDirectory: string, warnings: Array<string> = []) =>
+const withBots = (forkBotsDirectory: string, warnings: Array<string> = []) =>
   Effect.provide(
     Layer.mergeAll(
-      ForkRoles.layer.pipe(Layer.provide(ServerSettings.layerTest({ forkRolesDirectory }))),
+      ForkBots.layer.pipe(Layer.provide(ServerSettings.layerTest({ forkBotsDirectory }))),
       Logger.layer([Logger.make(({ message }) => void warnings.push(JSON.stringify(message)))], {
         mergeWithExisting: false,
       }),
     ),
   );
 
-const rolesDirectory = Effect.gen(function* () {
+const botsDirectory = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const dir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-fork-roles-" });
+  const dir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-fork-bots-" });
   const write = (name: string, contents: string) =>
     fs.writeFileString(path.join(dir, name), contents);
   yield* write(
@@ -35,14 +35,14 @@ const rolesDirectory = Effect.gen(function* () {
   yield* write("plain.md", "Just a brief.");
   yield* write("broken.md", "---\nname: [unclosed\n---\nBody after bad frontmatter.");
   yield* write("empty.md", "---\nname: Empty\n---\n");
-  yield* write("notes.txt", "not a role");
-  yield* write("bad id.md", "stem is not a role id");
+  yield* write("notes.txt", "not a bot");
+  yield* write("bad id.md", "stem is not a bot id");
   return { dir: yield* fs.realPath(dir), path };
 });
 
-it.describe("parseRoleFile", () => {
+it.describe("parseBotFile", () => {
   it("reads frontmatter fields and the body after it", () => {
-    assert.deepEqual(ForkRoles.parseRoleFile("---\nname: A\nicon: bot\n---\n\nBody\n"), {
+    assert.deepEqual(ForkBots.parseBotFile("---\nname: A\nicon: bot\n---\n\nBody\n"), {
       name: "A",
       icon: "bot",
       brief: "Body",
@@ -50,23 +50,23 @@ it.describe("parseRoleFile", () => {
   });
 
   it("ignores malformed frontmatter but keeps the body", () => {
-    assert.deepEqual(ForkRoles.parseRoleFile("---\nname: [x\n---\nBody"), { brief: "Body" });
+    assert.deepEqual(ForkBots.parseBotFile("---\nname: [x\n---\nBody"), { brief: "Body" });
   });
 
   it("treats a file without frontmatter as all body", () => {
-    assert.deepEqual(ForkRoles.parseRoleFile("Body only"), { brief: "Body only" });
+    assert.deepEqual(ForkBots.parseBotFile("Body only"), { brief: "Body only" });
   });
 });
 
-it.layer(NodeServices.layer)("ForkRoles", (it) => {
-  it.effect("lists only .md files whose stem is a role id, named from frontmatter or stem", () =>
+it.layer(NodeServices.layer)("ForkBots", (it) => {
+  it.effect("lists only .md files whose stem is a bot id, named from frontmatter or stem", () =>
     Effect.gen(function* () {
-      const { dir, path } = yield* rolesDirectory;
-      const result = yield* Effect.flatMap(ForkRoles.ForkRoles, (roles) => roles.list).pipe(
-        withRoles(dir),
+      const { dir, path } = yield* botsDirectory;
+      const result = yield* Effect.flatMap(ForkBots.ForkBots, (bots) => bots.list).pipe(
+        withBots(dir),
       );
       assert.equal(result.directory, dir);
-      assert.deepEqual(result.roles, [
+      assert.deepEqual(result.bots, [
         { id: "broken", name: "broken", path: path.join(dir, "broken.md") },
         { id: "empty", name: "Empty", path: path.join(dir, "empty.md") },
         {
@@ -83,32 +83,32 @@ it.layer(NodeServices.layer)("ForkRoles", (it) => {
 
   it.effect("reads a brief fresh from disk on every call", () =>
     Effect.gen(function* () {
-      const { dir, path } = yield* rolesDirectory;
+      const { dir, path } = yield* botsDirectory;
       const fs = yield* FileSystem.FileSystem;
       yield* Effect.gen(function* () {
-        const roles = yield* ForkRoles.ForkRoles;
-        assert.equal(yield* roles.readBrief("needs-you"), "Triage the needs-you queue.");
+        const bots = yield* ForkBots.ForkBots;
+        assert.equal(yield* bots.readBrief("needs-you"), "Triage the needs-you queue.");
         yield* fs.writeFileString(path.join(dir, "needs-you.md"), "Edited brief.");
-        assert.equal(yield* roles.readBrief("needs-you"), "Edited brief.");
-        assert.equal(yield* roles.readBrief("broken"), "Body after bad frontmatter.");
-        assert.isUndefined(yield* roles.readBrief("empty"));
-      }).pipe(withRoles(dir));
+        assert.equal(yield* bots.readBrief("needs-you"), "Edited brief.");
+        assert.equal(yield* bots.readBrief("broken"), "Body after bad frontmatter.");
+        assert.isUndefined(yield* bots.readBrief("empty"));
+      }).pipe(withBots(dir));
     }),
   );
 
-  it.effect("returns no brief and warns with the role and path when the file is missing", () =>
+  it.effect("returns no brief and warns with the bot and path when the file is missing", () =>
     Effect.gen(function* () {
-      const { dir, path } = yield* rolesDirectory;
+      const { dir, path } = yield* botsDirectory;
       const warnings: Array<string> = [];
-      const brief = yield* Effect.flatMap(ForkRoles.ForkRoles, (roles) =>
-        roles.readBrief("gone"),
-      ).pipe(withRoles(dir, warnings));
+      const brief = yield* Effect.flatMap(ForkBots.ForkBots, (bots) => bots.readBrief("gone")).pipe(
+        withBots(dir, warnings),
+      );
       assert.isUndefined(brief);
       assert.isTrue(
         warnings.some(
           (warning) =>
-            warning.includes("role file missing or unreadable") &&
-            warning.includes('"roleId":"gone"') &&
+            warning.includes("bot file missing or unreadable") &&
+            warning.includes('"botId":"gone"') &&
             warning.includes(JSON.stringify(path.join(dir, "gone.md"))),
         ),
         warnings.join("\n"),
@@ -118,53 +118,53 @@ it.layer(NodeServices.layer)("ForkRoles", (it) => {
 
   it.effect("rejects an id that would leave the directory", () =>
     Effect.gen(function* () {
-      const { dir } = yield* rolesDirectory;
-      const brief = yield* Effect.flatMap(ForkRoles.ForkRoles, (roles) =>
-        roles.readBrief("../needs-you"),
-      ).pipe(withRoles(dir));
+      const { dir } = yield* botsDirectory;
+      const brief = yield* Effect.flatMap(ForkBots.ForkBots, (bots) =>
+        bots.readBrief("../needs-you"),
+      ).pipe(withBots(dir));
       assert.isUndefined(brief);
     }),
   );
 
   it.effect("is off with an empty setting or an unreadable directory", () =>
     Effect.gen(function* () {
-      const { dir, path } = yield* rolesDirectory;
+      const { dir, path } = yield* botsDirectory;
       for (const directory of ["", path.join(dir, "missing")]) {
         yield* Effect.gen(function* () {
-          const roles = yield* ForkRoles.ForkRoles;
-          assert.deepEqual(yield* roles.list, { directory: null, roles: [] });
-        }).pipe(withRoles(directory));
+          const bots = yield* ForkBots.ForkBots;
+          assert.deepEqual(yield* bots.list, { directory: null, bots: [] });
+        }).pipe(withBots(directory));
       }
       assert.isUndefined(
-        yield* Effect.flatMap(ForkRoles.ForkRoles, (roles) => roles.readBrief("needs-you")).pipe(
-          withRoles(""),
+        yield* Effect.flatMap(ForkBots.ForkBots, (bots) => bots.readBrief("needs-you")).pipe(
+          withBots(""),
         ),
       );
     }),
   );
 });
 
-it.describe("Codex role context", () => {
-  const build = (roleInstructions: string | undefined, hasT3Mcp: boolean) =>
+it.describe("Codex bot context", () => {
+  const build = (botInstructions: string | undefined, hasT3Mcp: boolean) =>
     CodexAdapterV2.buildCodexTurnStartParams({
-      nativeThreadId: "native-role",
+      nativeThreadId: "native-bot",
       codexInput: [{ type: "text", text: "test" }],
       runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: "/work/app" },
       modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       hasT3Mcp,
-      roleInstructions,
+      botInstructions,
     });
 
-  it.effect("sends the role block as its own entry, with or without T3 Code's MCP tools", () =>
+  it.effect("sends the bot block as its own entry, with or without T3 Code's MCP tools", () =>
     Effect.gen(function* () {
-      const role = '<role id="needs-you">\nTriage the queue.\n</role>';
-      const withoutMcp = yield* build(role, false);
+      const bot = '<bot id="needs-you">\nTriage the queue.\n</bot>';
+      const withoutMcp = yield* build(bot, false);
       assert.deepEqual(withoutMcp.additionalContext, {
-        t3_code_role_01: { kind: "application", value: role },
+        t3_code_bot_01: { kind: "application", value: bot },
       });
-      assert.deepEqual((yield* build(role, true)).additionalContext?.t3_code_role_01, {
+      assert.deepEqual((yield* build(bot, true)).additionalContext?.t3_code_bot_01, {
         kind: "application",
-        value: role,
+        value: bot,
       });
       assert.isUndefined((yield* build(undefined, false)).additionalContext);
     }),
@@ -172,37 +172,36 @@ it.describe("Codex role context", () => {
 
   it.effect("splits a long brief at line breaks into numbered entries under the cap", () =>
     Effect.gen(function* () {
-      const role = Array.from(
-        { length: 300 },
-        (_, index) => `line ${index} ${"é".repeat(20)}`,
-      ).join("\n");
-      const context = (yield* build(role, false)).additionalContext ?? {};
+      const bot = Array.from({ length: 300 }, (_, index) => `line ${index} ${"é".repeat(20)}`).join(
+        "\n",
+      );
+      const context = (yield* build(bot, false)).additionalContext ?? {};
       const keys = Object.keys(context);
       assert.isAbove(keys.length, 1);
       assert.deepEqual(
         keys,
-        keys.map((_, index) => `t3_code_role_${String(index + 1).padStart(2, "0")}`),
+        keys.map((_, index) => `t3_code_bot_${String(index + 1).padStart(2, "0")}`),
       );
       const values = keys.map((key) => context[key]!.value);
       for (const value of values) assert.isAtMost(Buffer.byteLength(value), 4_000);
-      assert.equal(values.join("\n"), role);
+      assert.equal(values.join("\n"), bot);
     }),
   );
 });
 
-it.layer(NodeServices.layer)("forkRoleInstructions", (it) => {
-  it.effect("wraps the brief in a role block, and gives none for a missing file", () =>
+it.layer(NodeServices.layer)("forkBotInstructions", (it) => {
+  it.effect("wraps the brief in a bot block, and gives none for a missing file", () =>
     Effect.gen(function* () {
-      const { dir } = yield* rolesDirectory;
+      const { dir } = yield* botsDirectory;
       yield* Effect.gen(function* () {
-        const roles = yield* ForkRoles.ForkRoles;
+        const bots = yield* ForkBots.ForkBots;
         assert.equal(
-          yield* ForkRoles.forkRoleInstructions(roles, "needs-you"),
-          '<role id="needs-you">\nThis thread holds a standing role. Its brief, from needs-you.md:\n\nTriage the needs-you queue.\n</role>',
+          yield* ForkBots.forkBotInstructions(bots, "needs-you"),
+          '<bot id="needs-you">\nThis thread holds a standing bot. Its brief, from needs-you.md:\n\nTriage the needs-you queue.\n</bot>',
         );
-        assert.isUndefined(yield* ForkRoles.forkRoleInstructions(roles, "gone"));
-        assert.isUndefined(yield* ForkRoles.forkRoleInstructions(roles, null));
-      }).pipe(withRoles(dir));
+        assert.isUndefined(yield* ForkBots.forkBotInstructions(bots, "gone"));
+        assert.isUndefined(yield* ForkBots.forkBotInstructions(bots, null));
+      }).pipe(withBots(dir));
     }),
   );
 });

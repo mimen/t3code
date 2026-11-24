@@ -4,22 +4,22 @@ import { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 
-export function createForkRolesEnvironmentAtoms<R, E>(
+export function createForkBotsEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
   settingsValueAtom: (environmentId: EnvironmentId) => Atom.Atom<ServerSettings | null>,
-  /** The environment's assigned role ids, sorted and joined, so a newly written role file is fetched. */
-  roleIdsKeyAtom: (environmentId: EnvironmentId) => Atom.Atom<string>,
+  /** The environment's assigned bot ids, sorted and joined, so a newly written bot file is fetched. */
+  botIdsKeyAtom: (environmentId: EnvironmentId) => Atom.Atom<string>,
 ) {
   const refreshKeyAtom = Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) => {
-      const directory = get(settingsValueAtom(environmentId))?.forkRolesDirectory ?? "";
-      return `${directory}\n${get(roleIdsKeyAtom(environmentId))}`;
-    }).pipe(Atom.withLabel(`environment-data:fork-roles:refresh-key:${environmentId}`)),
+      const directory = get(settingsValueAtom(environmentId))?.forkBotsDirectory ?? "";
+      return `${directory}\n${get(botIdsKeyAtom(environmentId))}`;
+    }).pipe(Atom.withLabel(`environment-data:fork-bots:refresh-key:${environmentId}`)),
   );
   return {
     list: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:fork-roles:list",
-      tag: WS_METHODS.forkRolesList,
+      label: "environment-data:fork-bots:list",
+      tag: WS_METHODS.forkBotsList,
       refreshTrigger: ({ environmentId }) => refreshKeyAtom(environmentId),
     }),
   };

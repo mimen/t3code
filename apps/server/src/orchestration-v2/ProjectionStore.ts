@@ -1076,7 +1076,7 @@ export function applyToProjection(
     // Reordering and PR refreshes preserve the orchestrator's activity timestamp.
     case "thread.active-reordered":
     case "thread.tags-updated":
-    case "thread.role-set": // fork: roles
+    case "thread.bot-set": // fork: bots
     case "thread.pull-request-synced":
     case "thread.issue-synced":
       return {
@@ -2019,7 +2019,7 @@ export function threadShellFromProjection(
     autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
     pinOrderKey: projection.thread.pinOrderKey ?? null,
     ...(projection.thread.tags?.length ? { tags: projection.thread.tags } : {}),
-    ...(projection.thread.roleId ? { roleId: projection.thread.roleId } : {}), // fork: roles
+    ...(projection.thread.botId ? { botId: projection.thread.botId } : {}), // fork: bots
     lastVisitedAt: projection.thread.lastVisitedAt,
     opens: projection.thread.opens ?? null,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
@@ -2321,7 +2321,7 @@ function shellFromState(input: {
     autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
     pinOrderKey: input.state.thread.pinOrderKey ?? null,
     ...(input.state.thread.tags?.length ? { tags: input.state.thread.tags } : {}),
-    ...(input.state.thread.roleId ? { roleId: input.state.thread.roleId } : {}), // fork: roles
+    ...(input.state.thread.botId ? { botId: input.state.thread.botId } : {}), // fork: bots
     lastVisitedAt: input.state.thread.lastVisitedAt,
     opens: input.state.thread.opens ?? null,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
@@ -2527,7 +2527,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             case "thread.pin-reordered":
             case "thread.active-reordered":
             case "thread.tags-updated":
-            case "thread.role-set": // fork: roles
+            case "thread.bot-set": // fork: bots
             case "thread.visited":
             case "thread.marked-unread":
             case "thread.metadata-updated":
@@ -3381,7 +3381,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             event.type !== "thread.pin-reordered" &&
             event.type !== "thread.active-reordered" &&
             event.type !== "thread.tags-updated" &&
-            event.type !== "thread.role-set" && // fork: roles
+            event.type !== "thread.bot-set" && // fork: bots
             event.type !== "thread.visited" &&
             event.type !== "thread.visit-recorded" &&
             event.type !== "thread.marked-unread" &&

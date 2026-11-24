@@ -52,7 +52,7 @@ import { AuthClientMetadataDeviceType, AuthMcpClientAccess } from "./auth.ts";
 import { ChatAttachment } from "./chatAttachment.ts";
 import { ThreadGuestShare } from "./guestShare.ts";
 import { StoredThreadTags, ThreadTag } from "./threadTags.ts";
-import { ForkRoleId } from "./forkRoles.ts"; // fork: roles
+import { ForkBotId } from "./forkBots.ts"; // fork: bots
 import { ThreadTitleRegenerationOutcome } from "./threadTitle.ts";
 import {
   OrchestrationSearchThreadsInput,
@@ -553,7 +553,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /** Absent on threads written before tags existed; read as empty. */
   tags: Schema.optional(StoredThreadTags),
-  roleId: Schema.optional(Schema.NullOr(Schema.String)), // fork: roles
+  botId: Schema.optional(Schema.NullOr(Schema.String)), // fork: bots
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtc).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -2208,7 +2208,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.pin-reordered",
       "thread.active-reordered",
       "thread.tags-updated",
-      "thread.role-set", // fork: roles
+      "thread.bot-set", // fork: bots
       "thread.visited",
       "thread.marked-unread",
       "thread.metadata-updated",
@@ -2481,7 +2481,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /** Absent on threads written before tags existed; read as empty. */
   tags: Schema.optional(StoredThreadTags),
-  roleId: Schema.optional(Schema.NullOr(Schema.String)), // fork: roles
+  botId: Schema.optional(Schema.NullOr(Schema.String)), // fork: bots
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   opens: Schema.optional(LenientThreadOpens),
   titleRegeneration: Schema.optional(
@@ -3168,7 +3168,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.pin-reordered",
       "thread.active-reordered",
       "thread.tags-updated",
-      "thread.role-set", // fork: roles
+      "thread.bot-set", // fork: bots
       "thread.visited",
       "thread.marked-unread",
       "thread.pull-request-synced",
@@ -3452,12 +3452,12 @@ export const OrchestrationV2Command = Schema.Union([
     tag: ThreadTag,
     tagged: Schema.Boolean,
   }),
-  // fork: roles
+  // fork: bots
   Schema.Struct({
-    type: Schema.Literal("thread.role.set"),
+    type: Schema.Literal("thread.bot.set"),
     commandId: CommandId,
     threadId: ThreadId,
-    roleId: Schema.NullOr(ForkRoleId),
+    botId: Schema.NullOr(ForkBotId),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pin.reorder"),

@@ -3,11 +3,11 @@ import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts"
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  type RoleThread,
-  resolveRolesSection,
-  roleRowState,
-  splitRoleThreads,
-} from "./Sidebar.forkRoles.logic";
+  type BotThread,
+  resolveBotsSection,
+  botRowState,
+  splitBotThreads,
+} from "./Sidebar.forkBots.logic";
 import { createSidebarSortingStrategy } from "./Sidebar.drag";
 import {
   resolveSidebarDropTarget,
@@ -21,12 +21,12 @@ import {
 const environmentId = EnvironmentId.make("env");
 const completedAt = "2026-11-23T10:05:00.000Z";
 
-function role(title: string, overrides: Partial<RoleThread> = {}): RoleThread {
+function bot(title: string, overrides: Partial<BotThread> = {}): BotThread {
   return {
     environmentId,
     id: ThreadId.make(title),
     title,
-    roleId: title.toLowerCase(),
+    botId: title.toLowerCase(),
     settledOverride: null,
     hasActionableProposedPlan: false,
     hasPendingApprovals: false,
@@ -45,16 +45,16 @@ function role(title: string, overrides: Partial<RoleThread> = {}): RoleThread {
       completedAt,
     },
     ...overrides,
-  } as RoleThread;
+  } as BotThread;
 }
 
-const unread = role("Unread", {
+const unread = bot("Unread", {
   lastVisitedAt: "2026-11-23T09:00:00.000Z",
-  latestRun: { ...role("x").latestRun!, status: "failed" },
+  latestRun: { ...bot("x").latestRun!, status: "failed" },
 });
-const completed = role("Completed");
-const settled = role("Settled", { settledOverride: "settled" });
-const working = role("Working", {
+const completed = bot("Completed");
+const settled = bot("Settled", { settledOverride: "settled" });
+const working = bot("Working", {
   runtime: {
     status: "running",
     activeRunId: null,
@@ -64,38 +64,38 @@ const working = role("Working", {
     updatedAt: completedAt,
   },
 });
-const keyOf = (thread: RoleThread) =>
+const keyOf = (thread: BotThread) =>
   scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-const titles = (section: ReturnType<typeof resolveRolesSection<RoleThread>>) =>
+const titles = (section: ReturnType<typeof resolveBotsSection<BotThread>>) =>
   section.rows.map(({ thread, dimmed }) => `${thread.title}${dimmed ? " (dim)" : ""}`);
 const all = [working, settled, unread, completed];
 const closed = { expanded: true, showAll: false, routeThreadKey: null };
 
-describe("roleRowState", () => {
+describe("botRowState", () => {
   it("needs the user when unread, even if the run failed", () => {
-    expect(roleRowState(unread)).toBe("needs-you");
+    expect(botRowState(unread)).toBe("needs-you");
   });
 
   it("needs the user when its latest run completed, read or not", () => {
-    expect(roleRowState(completed)).toBe("needs-you");
+    expect(botRowState(completed)).toBe("needs-you");
   });
 
   it("is quiet once settled, and working while it runs", () => {
-    expect(roleRowState(settled)).toBe("quiet");
-    expect(roleRowState(working)).toBe("working");
+    expect(botRowState(settled)).toBe("quiet");
+    expect(botRowState(working)).toBe("working");
   });
 });
 
-describe("resolveRolesSection", () => {
-  it("lists only roles that need the user, counts them, and flags a working role", () => {
-    const section = resolveRolesSection(all, closed);
+describe("resolveBotsSection", () => {
+  it("lists only bots that need the user, counts them, and flags a working bot", () => {
+    const section = resolveBotsSection(all, closed);
     expect(titles(section)).toEqual(["Completed", "Unread"]);
     expect(section.needsYouCount).toBe(2);
     expect(section.working).toBe(true);
   });
 
-  it("reveals quiet and working roles dimmed under show all", () => {
-    expect(titles(resolveRolesSection(all, { ...closed, showAll: true }))).toEqual([
+  it("reveals quiet and working bots dimmed under show all", () => {
+    expect(titles(resolveBotsSection(all, { ...closed, showAll: true }))).toEqual([
       "Completed",
       "Settled (dim)",
       "Unread",
@@ -103,35 +103,37 @@ describe("resolveRolesSection", () => {
     ]);
   });
 
-  it("keeps the routed role visible while hidden or collapsed", () => {
-    expect(titles(resolveRolesSection(all, { ...closed, routeThreadKey: keyOf(settled) }))).toEqual(
-      ["Completed", "Settled (dim)", "Unread"],
-    );
+  it("keeps the routed bot visible while hidden or collapsed", () => {
+    expect(titles(resolveBotsSection(all, { ...closed, routeThreadKey: keyOf(settled) }))).toEqual([
+      "Completed",
+      "Settled (dim)",
+      "Unread",
+    ]);
     expect(
       titles(
-        resolveRolesSection(all, { ...closed, expanded: false, routeThreadKey: keyOf(working) }),
+        resolveBotsSection(all, { ...closed, expanded: false, routeThreadKey: keyOf(working) }),
       ),
     ).toEqual(["Working (dim)"]);
   });
 
-  it("collapses to its header when no role needs the user", () => {
-    const section = resolveRolesSection([settled, working], closed);
+  it("collapses to its header when no bot needs the user", () => {
+    const section = resolveBotsSection([settled, working], closed);
     expect(section.rows).toEqual([]);
     expect(section.needsYouCount).toBe(0);
   });
 });
 
-describe("splitRoleThreads", () => {
-  it("takes settled and pinned roles out of every other section", () => {
-    const pinned = { ...role("Pinned"), pinnedAt: completedAt };
-    const plainSettled = { ...role("Plain", { settledOverride: "settled" }), roleId: null };
-    const { roles, others } = splitRoleThreads([settled, pinned, plainSettled]);
-    expect(roles).toEqual([settled, pinned]);
+describe("splitBotThreads", () => {
+  it("takes settled and pinned bots out of every other section", () => {
+    const pinned = { ...bot("Pinned"), pinnedAt: completedAt };
+    const plainSettled = { ...bot("Plain", { settledOverride: "settled" }), botId: null };
+    const { bots, others } = splitBotThreads([settled, pinned, plainSettled]);
+    expect(bots).toEqual([settled, pinned]);
     expect(others).toEqual([plainSettled]);
   });
 });
 
-describe("roles block while dragging", () => {
+describe("bots block while dragging", () => {
   const marker = (name: SidebarListMarker): SidebarListItem => ({ kind: "marker", marker: name });
   const row = (key: string, section: SidebarSection): SidebarListItem => ({
     kind: "thread",
@@ -139,9 +141,9 @@ describe("roles block while dragging", () => {
     section,
   });
   const items = [
-    marker("roles-header"),
-    row("role", "roles"),
-    marker("roles-end"),
+    marker("bots-header"),
+    row("bot", "bots"),
+    marker("bots-end"),
     marker("pinned-header"),
     row("pinned", "pinned"),
     marker("pinned-divider"),
@@ -152,20 +154,20 @@ describe("roles block while dragging", () => {
     marker("settled-placeholder"),
   ];
 
-  it("takes no drops and keeps role rows out of the pinned order", () => {
-    expect(resolveSidebarDropTarget(items, "active", "role")).toBeNull();
-    expect(resolveSidebarDropTarget(items, "active", "roles-header")).toBeNull();
-    expect(resolveSidebarDropTarget(items, "active", "roles-end")).toBeNull();
+  it("takes no drops and keeps bot rows out of the pinned order", () => {
+    expect(resolveSidebarDropTarget(items, "active", "bot")).toBeNull();
+    expect(resolveSidebarDropTarget(items, "active", "bots-header")).toBeNull();
+    expect(resolveSidebarDropTarget(items, "active", "bots-end")).toBeNull();
     expect(resolveSidebarDropTarget(items, "active", "pinned")).toMatchObject({
       section: "pinned",
       pinnedOrder: ["active", "pinned"],
     });
   });
 
-  it("holds the roles block in place while a row moves to Pinned", () => {
+  it("holds the bots block in place while a row moves to Pinned", () => {
     let top = 0;
     const rects = items.map((item) => {
-      const height = item.kind === "thread" ? (item.section === "roles" ? 54 : 82) : 32;
+      const height = item.kind === "thread" ? (item.section === "bots" ? 54 : 82) : 32;
       const rect = { top, height, bottom: top + height, left: 0, right: 260, width: 260 };
       top += height + 1;
       return rect;
@@ -184,9 +186,9 @@ describe("roles block while dragging", () => {
     };
     const transform = (id: string) =>
       strategy({ ...args, index: items.findIndex((item) => sidebarListItemId(item) === id) });
-    expect(transform(sidebarMarkerId("roles-header"))).toMatchObject({ y: 0, scaleY: 1 });
-    expect(transform("role")).toMatchObject({ y: 0, scaleY: 1 });
-    expect(transform(sidebarMarkerId("roles-end"))).toMatchObject({ y: 0, scaleY: 1 });
+    expect(transform(sidebarMarkerId("bots-header"))).toMatchObject({ y: 0, scaleY: 1 });
+    expect(transform("bot")).toMatchObject({ y: 0, scaleY: 1 });
+    expect(transform(sidebarMarkerId("bots-end"))).toMatchObject({ y: 0, scaleY: 1 });
     expect(transform("pinned")?.y).toBeGreaterThan(0);
   });
 });

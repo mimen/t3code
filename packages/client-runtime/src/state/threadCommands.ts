@@ -50,7 +50,7 @@ import {
   reorderPinnedThread,
   reorderActiveThread,
   setThreadAutoSettle,
-  setThreadRole, // fork: roles
+  setThreadBot, // fork: bots
   settleThread,
   snoozeThread,
   startThreadTurn,
@@ -272,10 +272,10 @@ export function createThreadEnvironmentAtoms<R, E>(
       scheduler,
       concurrency,
     }),
-    // fork: roles
-    setRole: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:set-role",
-      execute: setThreadRole,
+    // fork: bots
+    setBot: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:set-bot",
+      execute: setThreadBot,
       scheduler,
       concurrency,
     }),
@@ -589,10 +589,10 @@ export function createThreadEnvironmentAtoms<R, E>(
       snoozedUntil: null,
       snoozedAt: null,
     })),
-    setRole: optimistic.wrap(commands.setRole, (thread, input) => ({
+    setBot: optimistic.wrap(commands.setBot, (thread, input) => ({
       ...thread,
-      roleId: input.roleId,
-    })), // fork: roles
+      botId: input.botId,
+    })), // fork: bots
     setAutoSettle: optimistic.wrap(commands.setAutoSettle, (thread, input, now) => ({
       ...thread,
       autoSettleDisabledAt: input.enabled ? null : (thread.autoSettleDisabledAt ?? now),

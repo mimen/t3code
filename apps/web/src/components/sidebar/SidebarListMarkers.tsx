@@ -10,7 +10,7 @@ import {
 } from "../Sidebar.logic";
 import { SIDEBAR_SORTABLE_DRAG_DISABLED } from "./SidebarThreadRow";
 
-// fork: roles
+// fork: bots
 export function SortableSidebarMarker(props: {
   marker: SidebarListMarker;
   className?: string;

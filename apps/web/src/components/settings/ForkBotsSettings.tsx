@@ -12,43 +12,43 @@ import {
   useUpdateScopedSettings,
 } from "./useScopedSettings";
 
-// Roles are per machine, so the row edits server settings only.
-export function ForkRolesSettingsSection() {
+// Bots are per machine, so the row edits server settings only.
+export function ForkBotsSettingsSection() {
   const gt = useGT();
   const setting = useSearchableSetting();
   const { scope, targets } = useSettingsScope();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
-  const mixed = useScopedSettingsMixed(["forkRolesDirectory"]);
+  const mixed = useScopedSettingsMixed(["forkBotsDirectory"]);
   const edited = useRef(false);
   const draft = useRef("");
   if (scope.kind !== "all" && scope.kind !== "environment") return null;
   const scopeKey = targets.map((target) => target.environmentId).join(",");
   return (
-    <SettingsSection title={gt("Roles", { $context: "settings section" })}>
+    <SettingsSection title={gt("Bots", { $context: "settings section" })}>
       <SettingsRow
-        {...setting("fork-roles-directory")}
+        {...setting("fork-bots-directory")}
         description={gt(
-          "Folder of role files, one Markdown file per role. A thread given a role keeps that standing job. Leave empty to turn roles off.",
+          "Folder of bot files, one Markdown file per bot. A thread given a bot keeps that standing job. Leave empty to turn bots off.",
         )}
         serverScoped
-        settingKeys={["forkRolesDirectory"]}
+        settingKeys={["forkBotsDirectory"]}
         resetAction={
-          mixed || settings.forkRolesDirectory !== "" ? (
+          mixed || settings.forkBotsDirectory !== "" ? (
             <SettingResetButton
-              ariaLabel={gt("Clear the roles directory")}
-              onClick={() => updateSettings({ forkRolesDirectory: "" })}
+              ariaLabel={gt("Clear the bots directory")}
+              onClick={() => updateSettings({ forkBotsDirectory: "" })}
             />
           ) : null
         }
         control={
           <Input
-            key={`${scopeKey}:${mixed}:${settings.forkRolesDirectory}`}
-            aria-label={gt("Roles directory")}
+            key={`${scopeKey}:${mixed}:${settings.forkBotsDirectory}`}
+            aria-label={gt("Bots directory")}
             autoCapitalize="none"
             spellCheck={false}
-            placeholder={mixed ? gt("Mixed") : gt("Off", { $context: "roles directory is unset" })}
-            defaultValue={mixed ? "" : settings.forkRolesDirectory}
+            placeholder={mixed ? gt("Mixed") : gt("Off", { $context: "bots directory is unset" })}
+            defaultValue={mixed ? "" : settings.forkBotsDirectory}
             onFocus={(event) => {
               draft.current = event.target.value;
             }}
@@ -59,8 +59,8 @@ export function ForkRolesSettingsSection() {
             }}
             onBlur={(event) => {
               const value = event.target.value.trim();
-              if (edited.current && (mixed || value !== settings.forkRolesDirectory))
-                updateSettings({ forkRolesDirectory: value });
+              if (edited.current && (mixed || value !== settings.forkBotsDirectory))
+                updateSettings({ forkBotsDirectory: value });
               edited.current = false;
             }}
           />

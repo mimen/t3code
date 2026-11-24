@@ -298,7 +298,7 @@ interface ActiveOpenCodeTurn {
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
   readonly agentFeedback: AgentFeedbackMode;
-  readonly roleInstructions?: string | undefined; // fork: roles
+  readonly botInstructions?: string | undefined; // fork: bots
   readonly providerTurnId: OrchestrationV2ProviderTurn["id"];
   readonly providerThreadId: OrchestrationV2ProviderTurn["providerThreadId"];
   readonly runOrdinal: number;
@@ -3520,7 +3520,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 model: turn.modelSelection.model,
                 agentFeedback: hasT3Mcp ? turn.agentFeedback : "off",
                 runtimePolicy: turn.runtimePolicy,
-                roleInstructions: turn.roleInstructions, // fork: roles
+                botInstructions: turn.botInstructions, // fork: bots
               }),
             ]
               .filter(Boolean)
@@ -3794,7 +3794,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 modelSelection: turnInput.modelSelection,
                 runtimePolicy: turnInput.runtimePolicy,
                 agentFeedback: turnInput.agentFeedback ?? "off",
-                roleInstructions: turnInput.roleInstructions, // fork: roles
+                botInstructions: turnInput.botInstructions, // fork: bots
                 providerTurnId,
                 providerThreadId: turnInput.providerThread.id,
                 runOrdinal: turnInput.runOrdinal,
