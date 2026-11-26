@@ -17,6 +17,7 @@ import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
 import * as PeerLinkRequests from "../../../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../../../peer/PeerLinks.ts";
+import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -66,6 +67,7 @@ const withServer = (dispatched: Array<OrchestrationV2ServerCommand>) =>
     Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
     Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
     Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
+    Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
     Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provide(NodeCrypto.layer),
     Layer.provide(
