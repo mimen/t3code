@@ -2978,6 +2978,23 @@ function nextClaudeGoal(
   };
 }
 
+// fork: stop-hook-answer. A blocking Stop hook re-prompts Claude after it already replied.
+function isClaudeStopHookFeedback(message: SDKMessage): boolean {
+  if (
+    message.type !== "user" ||
+    message.parent_tool_use_id !== null ||
+    message.isSynthetic !== true
+  ) {
+    return false;
+  }
+  const content = message.message.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  return text.startsWith("Stop hook feedback:\n");
+}
+
 /** The CLI confirms a goal change as a synthetic reply; the goal row shows that change instead. */
 function isClaudeGoalAcknowledgement(message: SDKMessage): boolean {
   if (
@@ -11400,6 +11417,23 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return;
           }
           yield* trackClaudeGoal({ nativeThreadId: liveQuery.nativeThreadId, context, message });
+          // fork: stop-hook-answer. Keep the reply a Stop hook blocked visible; a goal check
+          // re-prompts unfinished work instead.
+          if (
+            isClaudeStopHookFeedback(message) &&
+            goalsByNativeThread.get(liveQuery.nativeThreadId)?.status !== "active" &&
+            context.assistant.lastReply !== null
+          ) {
+            const answer = context.assistant.lastReply;
+            yield* publishAssistantArtifacts({
+              context,
+              ...answer,
+              createdAt: answer.startedAt,
+              status: "completed",
+              completedAt: yield* DateTime.now,
+              finalAnswer: true,
+            });
+          }
 
           if (message.type === "stream_event" && !message.parent_tool_use_id) {
             const event = message.event;

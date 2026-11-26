@@ -26541,6 +26541,83 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           : [],
       );
 
+    // fork: stop-hook-answer
+    it.effect("keeps a reply a Stop hook blocked as the answer, but not one a goal re-checks", () =>
+      Effect.gen(function* () {
+        const phaseOf = (
+          events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>,
+          text: string,
+        ) => {
+          const item = events.findLast(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.type === "assistant_message" &&
+              event.turnItem.text === text,
+          );
+          return item?.type === "turn_item.updated" && item.turnItem.type === "assistant_message"
+            ? (item.turnItem.phase ?? null)
+            : "missing";
+        };
+        const run = Effect.fnUntraced(function* (
+          text: string,
+          frames: ReadonlyArray<ReturnType<typeof claudeSdkFrame>>,
+        ) {
+          const harness = yield* makeWakeHarness;
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make(`stop-hook-${text.length}`),
+              text,
+              attachments: [],
+            }),
+          );
+          for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
+          assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+          return harness.events;
+        });
+        const blocked = yield* run("How does the skill work?", [
+          makeAssistantTextFrame({ uuid: "hook-answer", text: "Here is the walkthrough." }),
+          claudeSdkFrame({
+            type: "user",
+            message: {
+              role: "user",
+              content: [{ type: "text", text: "Stop hook feedback:\nThe reply hands a step." }],
+            },
+            parent_tool_use_id: null,
+            isSynthetic: true,
+            uuid: "hook-feedback",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+          makeAssistantTextFrame({ uuid: "hook-filler", text: "That was the walkthrough." }),
+          makeResultFrame({ uuid: "hook-result", result: "That was the walkthrough." }),
+        ]);
+        assert.equal(phaseOf(blocked, "Here is the walkthrough."), "final_answer");
+        assert.equal(phaseOf(blocked, "That was the walkthrough."), null);
+
+        const condition = "all tests pass";
+        const goal = yield* run(`/goal ${condition}`, [
+          syntheticFrame("goal-set-hook", `Goal set: ${condition}`),
+          makeAssistantTextFrame({ uuid: "goal-progress", text: "Fixing the first test." }),
+          stopHookFeedback("goal-check-hook", condition, "One test still fails."),
+          makeAssistantTextFrame({ uuid: "goal-done", text: "All tests pass now." }),
+          makeResultFrame({ uuid: "goal-result-hook", result: "All tests pass now." }),
+        ]);
+        assert.equal(phaseOf(goal, "Fixing the first test."), null);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    );
+
     it.effect("tracks a /goal through unmet checks until Claude stops on its own", () =>
       Effect.gen(function* () {
         const harness = yield* makeWakeHarness;
