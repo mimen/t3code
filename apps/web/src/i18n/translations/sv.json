@@ -1559,6 +1559,7 @@
   "6848f5bbb2bd9eec": "PDF-dokument",
   "7873a79df0cf6d0e": "Webbsida",
   "0b55696e27387e4e": "Tryck på Shift+Escape för att lämna webbsidan.",
+  "90dfebe26eb86b2d": "Sidans valalternativ",
   "737d3c6bec93f9e6": "Välj filer för sidan",
   "e6a3fa7cfc14f86a": "Webbläsardialog",
   "61a552a67e9e3eac": "Dialogsvar",
@@ -4616,6 +4617,7 @@
       "c": "”"
     }
   ],
+  "91aadfc843c600de": "Verifiera Google-konto",
   "a2aaca7ff8310186": "Öppna chatt",
   "a3048aaa541b7744": "Aktivitet",
   "4a3cbccb2beedeb0": "bild",
@@ -12660,9 +12662,14 @@
   "dd7a1e58c2553933": "vaknar om {duration}",
   "95cc952724dd7310": "vaknar strax",
   "3cc34921c0128593": "körs",
-  "e777db2880f53a46": "ingen svarade",
   "dc90739d391a5e67": "Du svarade {choice}",
+  "4e96712d839ccbff": "{who} svarade {choice}",
+  "e777db2880f53a46": "ingen svarade",
+  "201490988858b511": "återkallad av {by}",
   "389f2563b5b763fd": "Snabba steg",
+  "99451a5d2d40440f": "Återkallad av {by}.",
+  "3ee30a50b70fffab": "Återkallad av {by}: {reason}",
+  "92e129bf413a1220": "återkallad",
   "a41c8d758121ad81": "sov",
   "9db248b770096984": "väntade",
   "c76124517af28686": "har körts i {duration}",
@@ -12698,6 +12705,49 @@
   "8bffb377e2a6a7de": "dess version är inte längre registrerad",
   "f92d9132f7b85d1a": "Läser in steg…",
   "6ebc59f64c761a49": "Inget än.",
+  "19097cfb8f5a79cf": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " svarade",
+    " ",
+    {
+      "t": "span",
+      "i": 2,
+      "c": {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    },
+    "."
+  ],
+  "e7bbf693910057bf": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " svarade",
+    " ",
+    {
+      "t": "span",
+      "i": 2,
+      "c": {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    },
+    ": ",
+    {
+      "i": 4,
+      "k": "_gt_value_4",
+      "v": "v"
+    }
+  ],
   "a759dccd157d7dae": [
     "Du svarade",
     " ",
@@ -12731,6 +12781,15 @@
       "v": "v"
     }
   ],
+  "3759768c5d342c22": [
+    "besvarad",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
   "c98009be9a273b31": "Öppna körning",
   "c8eb9be36d4d51ad": [
     "Tråd på ",
@@ -12756,6 +12815,14 @@
   ],
   "02dfe6c63fd0b8a1": "Lägg till ett skäl",
   "19abd94828a3bdbc": "Fråga agenten först",
+  "e114d37b32ab0dc7": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " kräver en anledning."
+  ],
   "a18721fa8f328361": "Behöver dig",
   "bbf24e7920c1e86b": "Körs",
   "8d6e18d2ad832db6": "Alla",
