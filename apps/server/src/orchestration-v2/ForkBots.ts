@@ -181,7 +181,8 @@ export function forkBotCodexContext(botInstructions: string | undefined) {
   let bytes = 0;
   for (const char of botInstructions) {
     const size = Buffer.byteLength(char);
-    if (bytes + size > CODEX_ADDITIONAL_CONTEXT_VALUE_MAX_BYTES) {
+    // A cut can leave a remainder that the next character still overflows.
+    while (bytes + size > CODEX_ADDITIONAL_CONTEXT_VALUE_MAX_BYTES) {
       const cut = current.lastIndexOf("\n");
       chunks.push(cut > 0 ? current.slice(0, cut) : current);
       current = cut > 0 ? current.slice(cut + 1) : "";

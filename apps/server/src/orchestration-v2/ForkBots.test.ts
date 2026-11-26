@@ -187,6 +187,16 @@ it.describe("Codex bot context", () => {
       assert.equal(values.join("\n"), bot);
     }),
   );
+
+  it.effect("keeps a line cut right after a short first line under the cap", () =>
+    Effect.gen(function* () {
+      const bot = `x\n${"b".repeat(3_997)}😀c`;
+      const context = (yield* build(bot, false)).additionalContext ?? {};
+      const values = Object.values(context).map((entry) => entry.value);
+      for (const value of values) assert.isAtMost(Buffer.byteLength(value), 4_000);
+      assert.equal(values.join(""), bot.replace("\n", ""));
+    }),
+  );
 });
 
 it.layer(NodeServices.layer)("forkBotInstructions", (it) => {
