@@ -56,31 +56,133 @@ export function splitBotThreads<T extends Pick<EnvironmentThreadShell, "botId">>
   return { bots, others };
 }
 
+/** A bot file's grouping fields, looked up for each bot thread. */
+export interface BotGrouping {
+  readonly group?: string | undefined;
+  readonly lead?: boolean | undefined;
+}
+
+/** The live count a bot keeps in its title, as in `Needs you · 81`. */
+function botTitleCount(title: string): number {
+  const match = /\s·\s*(\d+)\s*$/.exec(title);
+  return match ? Number(match[1]) : 0;
+}
+
+export interface BotGroupView<T> {
+  readonly name: string;
+  readonly open: boolean;
+  /** The lead, or the first member when the group has none. */
+  readonly iconThread: T;
+  readonly notices: readonly BotNotice[];
+  readonly count: number;
+  readonly working: boolean;
+}
+
+export interface BotSectionRow<T> {
+  readonly thread: T;
+  readonly state: BotRowState;
+  readonly dimmed: boolean;
+  /** Set on a group's lead, whose row stands for the whole group. */
+  readonly group?: BotGroupView<T>;
+  readonly inGroup: boolean;
+}
+
+/** The bots block in display order: thread rows, and a header for each group with no lead. */
+export type BotSectionEntry<T> =
+  | { readonly kind: "row"; readonly row: BotSectionRow<T> }
+  | { readonly kind: "group-header"; readonly group: BotGroupView<T> };
+
 export function resolveBotsSection<T extends BotThread>(
   bots: readonly T[],
   input: {
     readonly expanded: boolean;
     readonly showAll: boolean;
     readonly routeThreadKey: string | null;
+    readonly grouping?: (thread: T) => BotGrouping | null;
+    readonly expandedGroups?: ReadonlySet<string>;
   },
 ) {
-  const states = bots
-    .map((thread) => ({ thread, state: botRowState(thread) }))
-    .toSorted(
-      (left, right) =>
-        Number(right.state === "asking") - Number(left.state === "asking") ||
-        left.thread.title.localeCompare(right.thread.title),
-    );
+  const byTitle = (left: { thread: T }, right: { thread: T }) =>
+    left.thread.title.localeCompare(right.thread.title);
+  const states = bots.map((thread) => ({ thread, state: botRowState(thread) })).toSorted(byTitle);
   const isRoute = (thread: T) =>
     scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === input.routeThreadKey;
-  const rows = states
-    .filter(
-      ({ thread, state }) =>
-        isRoute(thread) || (input.expanded && (input.showAll || botWantsYou(state))),
+  const shown = ({ thread, state }: { thread: T; state: BotRowState }) =>
+    isRoute(thread) || (input.expanded && (input.showAll || botWantsYou(state)));
+  const plain = ({ thread, state }: { thread: T; state: BotRowState }): BotSectionRow<T> => ({
+    thread,
+    state,
+    dimmed: !botWantsYou(state),
+    inGroup: false,
+  });
+
+  type Unit = { name: string; asking: boolean; entries: BotSectionEntry<T>[] };
+  const units: Unit[] = [];
+  const groups = new Map<string, typeof states>();
+  for (const entry of states) {
+    // A collapsed section shows only the open thread, so groups only form while it is expanded.
+    const name = input.expanded ? input.grouping?.(entry.thread)?.group : undefined;
+    if (name === undefined) {
+      if (shown(entry))
+        units.push({
+          name: entry.thread.title,
+          asking: entry.state === "asking",
+          entries: [{ kind: "row", row: plain(entry) }],
+        });
+      continue;
+    }
+    groups.set(name, [...(groups.get(name) ?? []), entry]);
+  }
+  for (const [name, members] of groups) {
+    const lead = members.find(({ thread }) => input.grouping?.(thread)?.lead === true);
+    const wantsYou = members.some(({ state }) => botWantsYou(state));
+    if (!input.showAll && !wantsYou && !members.some(({ thread }) => isRoute(thread))) continue;
+    const open = input.expandedGroups?.has(name) ?? false;
+    const group: BotGroupView<T> = {
+      name,
+      open,
+      iconThread: (lead ?? members[0]!).thread,
+      notices: members.flatMap(({ thread, state }) => botNotice(state, thread) ?? []),
+      count: members.reduce((sum, { thread }) => sum + botTitleCount(thread.title), 0),
+      working: members.some(({ state }) => state === "working"),
+    };
+    const entries: BotSectionEntry<T>[] = [
+      lead
+        ? {
+            kind: "row",
+            row: {
+              ...plain(lead),
+              dimmed: open ? !botWantsYou(lead.state) : !wantsYou,
+              group,
+            },
+          }
+        : { kind: "group-header", group },
+    ];
+    if (open) {
+      for (const member of members.toSorted(
+        (left, right) =>
+          Number(right.state === "asking") - Number(left.state === "asking") ||
+          byTitle(left, right),
+      )) {
+        if (member !== lead && shown(member))
+          entries.push({ kind: "row", row: { ...plain(member), inGroup: true } });
+      }
+    }
+    units.push({ name, asking: members.some(({ state }) => state === "asking"), entries });
+  }
+  const entries = units
+    .toSorted(
+      (left, right) =>
+        Number(right.asking) - Number(left.asking) || left.name.localeCompare(right.name),
     )
-    .map(({ thread, state }) => ({ thread, state, dimmed: !botWantsYou(state) }));
-  const needsYou = states.filter(({ state }) => botWantsYou(state)).map(({ thread }) => thread);
+    .flatMap((unit) => unit.entries);
+  const rows = entries.flatMap((entry) => (entry.kind === "row" ? [entry.row] : []));
+  const needsYou = states
+    .filter(({ state }) => botWantsYou(state))
+    .toSorted((left, right) => Number(right.state === "asking") - Number(left.state === "asking"))
+    .map(({ thread }) => thread);
   return {
+    entries,
     rows,
     needsYou,
     needsYouCount: needsYou.length,

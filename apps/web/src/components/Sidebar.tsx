@@ -143,7 +143,13 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import { LaterShelfHeader, useLaterShelf } from "./Sidebar.forkLater"; // fork: later-shelf
 import { timedSnoozePresets } from "@t3tools/client-runtime/state/thread-settled"; // fork: later-shelf
 import { laterMenuItem } from "./threadActionMenu.forkLater"; // fork: later-shelf
-import { BotsEnd, BotsHeader, sidebarBotRow, useBotsSection } from "./Sidebar.forkBots"; // fork: bots
+import {
+  BotGroupHeader,
+  BotsEnd,
+  BotsHeader,
+  sidebarBotRow,
+  useBotsSection,
+} from "./Sidebar.forkBots"; // fork: bots
 import { splitBotThreads } from "./Sidebar.forkBots.logic"; // fork: bots
 import { readForkBotMenuState, useForkBotMenuHandler } from "../state/forkBots"; // fork: bots
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -2041,12 +2047,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (botsSection.threads.length > 0) {
       // fork: bots
       items.push({ kind: "marker", marker: "bots-header" });
-      items.push(
-        ...rowsOf(
-          botsSection.rows.map(({ thread }) => thread),
-          "bots",
-        ),
-      );
+      items.push(...botsSection.listItems);
       items.push({ kind: "marker", marker: "bots-end" });
     }
     items.push({ kind: "marker", marker: "pinned-header" });
@@ -2117,6 +2118,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledShelfExpanded,
     botsSection.expanded, // fork: bots
     botsSection.showAll, // fork: bots
+    botsSection.groupsKey, // fork: bots
   ].join(":");
   const previousShelfExpansionKeyRef = useRef(shelfExpansionKey);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records moved rows and updates list motion after each layout-affecting commit
@@ -3601,7 +3603,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           variant={section === "bots" ? "bot" : rowVariant} // fork: bots
                           bot={
                             section === "bots" // fork: bots
-                              ? sidebarBotRow(thread, botsSection.rowStates.get(threadKey))
+                              ? sidebarBotRow(
+                                  thread,
+                                  botsSection.rowsByKey.get(threadKey),
+                                  botsSection.toggleGroup,
+                                )
                               : undefined
                           }
                           navigationParent={
@@ -3731,6 +3737,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             );
                           }
                         }
+                        continue;
+                      }
+                      const botGroup = botsSection.groupHeaders.get(item.marker); // fork: bots
+                      if (botGroup !== undefined) {
+                        items.push(
+                          <BotGroupHeader
+                            key={item.marker}
+                            marker={item.marker}
+                            group={botGroup}
+                            onToggle={botsSection.toggleGroup}
+                          />,
+                        );
                         continue;
                       }
                       switch (item.marker) {

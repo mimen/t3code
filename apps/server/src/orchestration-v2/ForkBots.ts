@@ -23,6 +23,8 @@ export interface ParsedBotFile {
   readonly name?: string;
   readonly icon?: string;
   readonly color?: string;
+  readonly group?: string;
+  readonly lead?: boolean;
   readonly brief: string;
 }
 
@@ -42,7 +44,14 @@ export function parseBotFile(contents: string): ParsedBotFile {
     const value = record[key];
     return typeof value === "string" && value.trim() ? { [key]: value.trim() } : {};
   };
-  return { ...field("name"), ...field("icon"), ...field("color"), brief };
+  return {
+    ...field("name"),
+    ...field("icon"),
+    ...field("color"),
+    ...field("group"),
+    ...(record.lead === true ? { lead: true } : {}),
+    brief,
+  };
 }
 
 export interface ForkBotsShape {
@@ -104,12 +113,14 @@ const make = Effect.gen(function* () {
       const file = path.join(dir, entry);
       const contents = yield* fileSystem.readFileString(file).pipe(Effect.option);
       if (contents._tag === "None") continue;
-      const { name, icon, color } = parseBotFile(contents.value);
+      const { name, icon, color, group, lead } = parseBotFile(contents.value);
       bots.push({
         id,
         name: name ?? id,
         ...(icon ? { icon } : {}),
         ...(color ? { color } : {}),
+        ...(group ? { group } : {}),
+        ...(lead ? { lead } : {}),
         path: file,
       });
     }

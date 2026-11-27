@@ -1,10 +1,11 @@
+import { useAtomValue } from "@effect/atom-react";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { createForkBotsEnvironmentAtoms } from "@t3tools/client-runtime/state/fork-bots";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ForkBot, ScopedThreadRef } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { msg } from "gt-react";
@@ -56,6 +57,33 @@ export function useForkBotsPrefetch() {
 export function useForkBot(environmentId: EnvironmentId, botId: string | null) {
   const bots = useForkBots(botId === null ? null : environmentId);
   return bots?.bots.find((bot) => bot.id === botId) ?? null;
+}
+
+const botsLookupAtom = Atom.family((environmentIds: string) =>
+  Atom.make((get) => {
+    const lookup = new Map<string, ForkBot>();
+    for (const environmentId of environmentIds.split(",").filter(Boolean)) {
+      const list = get(botsListAtom(environmentId as EnvironmentId));
+      for (const bot of AsyncResult.getOrElse(list, () => null)?.bots ?? []) {
+        lookup.set(`${environmentId}\n${bot.id}`, bot);
+      }
+    }
+    return lookup;
+  }),
+);
+
+/** Looks up each thread's bot file across the environments these threads live in. */
+export function useForkBotsLookup(
+  threads: readonly Pick<EnvironmentThreadShell, "environmentId" | "botId">[],
+) {
+  const environmentIds = [
+    ...new Set(threads.flatMap((thread) => (thread.botId ? [thread.environmentId] : []))),
+  ]
+    .toSorted()
+    .join(",");
+  const lookup = useAtomValue(botsLookupAtom(environmentIds));
+  return (thread: Pick<EnvironmentThreadShell, "environmentId" | "botId">) =>
+    thread.botId ? (lookup.get(`${thread.environmentId}\n${thread.botId}`) ?? null) : null;
 }
 
 /** Reading starts the fetch, so a menu opened before the first answer shows bots as loading. */
