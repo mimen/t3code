@@ -16,9 +16,6 @@ REPO=mimen/t3code
 IDENTITY="Apple Development: Created via API (5VG478JB32)"
 KEYCHAIN="$HOME/Library/Keychains/fork-signing.keychain-db"
 SIGNING_ITEM="op://Sol/T3 Code Fork Signing"
-# Upstream's public client config, so T3 Connect pairing works as it does in upstream builds.
-CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsudDMuY29kZXMk
-RELAY_URL=https://relay.t3.codes
 
 dry_run=false
 [[ "${1:-}" == "--dry-run" ]] && { dry_run=true; shift; }
@@ -55,6 +52,8 @@ trap 'git -C "$root" worktree remove --force "$work" >/dev/null 2>&1 || true' EX
 security unlock-keychain -p "$(op read "$SIGNING_ITEM/keychain_password")" "$KEYCHAIN"
 
 cd "$work"
+# Upstream's public T3 Connect client config. The app hides T3 Connect unless every key is set.
+while IFS= read -r line; do export "$line"; done < <(grep -E '^T3CODE_(CLERK_PUBLISHABLE_KEY|CLERK_JWT_TEMPLATE|CLERK_CLI_OAUTH_CLIENT_ID|RELAY_URL)=' .env.example)
 vp install
 # The Apple Speech helper needs the macOS 26 SDK; without it the build ships with Mac dictation unavailable.
 sdk="$(xcrun --show-sdk-version)"
@@ -65,7 +64,6 @@ fi
 rm -rf "$out"
 CSC_NAME="$IDENTITY" CSC_KEYCHAIN="$KEYCHAIN" \
   T3CODE_DESKTOP_UPDATE_REPOSITORY="$REPO" \
-  T3CODE_CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" T3CODE_RELAY_URL="$RELAY_URL" \
   vp run dist:desktop:artifact --platform mac --target dmg --arch arm64 \
   --build-version "$version" --output-dir "$out" ${T3CODE_FORK_RELEASE_VERBOSE:+--verbose}
 
