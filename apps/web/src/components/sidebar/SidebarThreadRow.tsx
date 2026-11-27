@@ -616,6 +616,8 @@ type SidebarThreadRowProps = {
   bot?:
     | {
         readonly icon: ReactNode;
+        readonly label?: ReactNode;
+        readonly inGroup?: boolean;
         readonly dimmed: boolean;
         readonly urgent: boolean;
         readonly status: ReactNode;
@@ -1363,6 +1365,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           bot && "[contain-intrinsic-size:auto_--spacing(7)]", // fork: bots
           sortable?.isDragging && "relative z-20",
           bot && "-mb-px bg-sidebar-control-surface px-0.5 pb-px", // fork: bots
+          props.bot?.inGroup && // fork: bots
+            "relative ps-6 before:absolute before:inset-y-0 before:start-4.5 before:w-px before:bg-sidebar-border",
         )}
       >
         <ThreadHoverCardTrigger
@@ -1419,7 +1423,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               </span>
             )}
             {draftIndicator}
-            {title}
+            {(!isRenaming && props.bot?.label) || title /* fork: bots */}
             {multiline ? titleLineIcons : null}
             {pinIndicator}
             {multiline || bot ? null : terminalStatusIcon /* fork: bots */}

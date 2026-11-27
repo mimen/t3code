@@ -175,6 +175,67 @@ describe("resolveBotsSection", () => {
   });
 });
 
+describe("bot groups", () => {
+  const lead = bot("UW27 · 1");
+  const bookings = bot("Bookings · 8", { lastVisitedAt: "2026-11-23T09:00:00.000Z" });
+  const marketing = bot("Marketing", { settledOverride: "settled" });
+  const organizer = bot("Expense Organizer · 3");
+  const reconciler = bot("Expense Reconciliation", { settledOverride: "settled" });
+  const grouping = (thread: BotThread) =>
+    thread === lead
+      ? { group: "UW27", lead: true }
+      : thread === bookings || thread === marketing
+        ? { group: "UW27" }
+        : thread === organizer || thread === reconciler
+          ? { group: "Finance" }
+          : null;
+  const threads = [lead, bookings, marketing, organizer, reconciler, completed];
+  const shape = (section: ReturnType<typeof resolveBotsSection<BotThread>>) =>
+    section.entries.map((entry) =>
+      entry.kind === "group-header"
+        ? `[${entry.group.name}]`
+        : `${entry.row.inGroup ? "  " : ""}${entry.row.group ? `<${entry.row.group.name}> ` : ""}${entry.row.thread.title}`,
+    );
+
+  it("collapses each group to one row that sums its members' counts", () => {
+    const section = resolveBotsSection(threads, { ...closed, grouping });
+    expect(shape(section)).toEqual(["Completed", "[Finance]", "<UW27> UW27 · 1"]);
+    const uw27 = section.rows.find((row) => row.group)!.group!;
+    expect(uw27).toMatchObject({ count: 9, open: false, notices: ["done", "done"] });
+    expect(section.needsYouCount).toBe(4);
+  });
+
+  it("indents an open group's members under its lead or header", () => {
+    const section = resolveBotsSection(threads, {
+      ...closed,
+      showAll: true,
+      grouping,
+      expandedGroups: new Set(["UW27", "Finance"]),
+    });
+    expect(shape(section)).toEqual([
+      "Completed",
+      "[Finance]",
+      "  Expense Organizer · 3",
+      "  Expense Reconciliation",
+      "<UW27> UW27 · 1",
+      "  Bookings · 8",
+      "  Marketing",
+    ]);
+  });
+
+  it("hides a quiet group until Show all, and draws no groups while the section is collapsed", () => {
+    const quiet = resolveBotsSection([marketing, reconciler], { ...closed, grouping });
+    expect(quiet.entries).toEqual([]);
+    const folded = resolveBotsSection(threads, {
+      ...closed,
+      expanded: false,
+      routeThreadKey: keyOf(bookings),
+      grouping,
+    });
+    expect(shape(folded)).toEqual(["Bookings · 8"]);
+  });
+});
+
 describe("splitBotThreads", () => {
   it("takes settled and pinned bots out of every other section", () => {
     const pinned = { ...bot("Pinned"), pinnedAt: completedAt };

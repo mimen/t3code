@@ -222,6 +222,7 @@ const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
 export type SidebarListMarker =
   | "bots-header" // fork: bots
   | "bots-end" // fork: bots
+  | `bot-group:${string}` // fork: bots
   | "pinned-header"
   | "active-placeholder"
   | "settled-placeholder"

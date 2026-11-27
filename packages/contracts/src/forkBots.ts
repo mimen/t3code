@@ -16,6 +16,10 @@ export const ForkBot = Schema.Struct({
   /** A lucide icon name from frontmatter. */
   icon: Schema.optional(Schema.String),
   color: Schema.optional(Schema.String),
+  /** Bots that share a group render together under one sidebar row. */
+  group: Schema.optional(Schema.String),
+  /** This bot's thread is its group's row. */
+  lead: Schema.optional(Schema.Boolean),
   /** Absolute path, for the file viewer. */
   path: Schema.String,
 });

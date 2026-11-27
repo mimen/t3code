@@ -3,21 +3,23 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 import type { EnvironmentId, ForkBot, ScopedThreadRef } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { T, useGT } from "gt-react";
-import { BotIcon, EyeIcon, EyeOffIcon, HistoryIcon } from "lucide-react";
+import { BotIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, HistoryIcon } from "lucide-react";
 import { createElement, lazy, Suspense, useState } from "react";
 
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { cn } from "../lib/utils";
-import { useForkBot, useForkBotsPrefetch } from "../state/forkBots";
+import { useForkBot, useForkBotsLookup, useForkBotsPrefetch } from "../state/forkBots";
 import {
+  type BotGroupView,
   type BotNotice,
-  type BotRowState,
+  type BotSectionRow,
   type BotThread,
   botNotice,
   botRowState,
   botWantsYou,
   resolveBotsSection,
 } from "./Sidebar.forkBots.logic";
+import type { SidebarListItem, SidebarListMarker } from "./Sidebar.logic";
 import { RelativeTimeLabel } from "./sidebar/SidebarThreadRow";
 import { SortableSidebarMarker } from "./sidebar/SidebarListMarkers";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
@@ -25,6 +27,12 @@ import { Spinner } from "./ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const BOTS_EXPANDED_KEY = "t3code:sidebar:bots-expanded";
+const BOT_GROUPS_EXPANDED_KEY = "t3code:sidebar:bot-groups-expanded";
+const GroupNames = Schema.Array(Schema.String);
+
+const botGroupMarker = (name: string): SidebarListMarker => `bot-group:${name}`;
+const threadKeyOf = (thread: BotThread) =>
+  scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
 
 export function useBotsSection(
   bots: readonly EnvironmentThreadShell[],
@@ -32,19 +40,42 @@ export function useBotsSection(
 ) {
   const [expanded, setExpanded] = useLocalStorage(BOTS_EXPANDED_KEY, true, Schema.Boolean);
   const [showAll, setShowAll] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useLocalStorage(
+    BOT_GROUPS_EXPANDED_KEY,
+    [],
+    GroupNames,
+  );
   useForkBotsPrefetch();
-  const section = resolveBotsSection(bots, { expanded, showAll, routeThreadKey });
+  const grouping = useForkBotsLookup(bots);
+  const section = resolveBotsSection(bots, {
+    expanded,
+    showAll,
+    routeThreadKey,
+    grouping,
+    expandedGroups: new Set(expandedGroups),
+  });
+  const groupHeaders = new Map<string, BotGroupView<EnvironmentThreadShell>>();
+  const listItems = section.entries.map((entry): SidebarListItem => {
+    if (entry.kind === "row") {
+      return { kind: "thread", key: threadKeyOf(entry.row.thread), section: "bots" };
+    }
+    groupHeaders.set(botGroupMarker(entry.group.name), entry.group);
+    return { kind: "marker", marker: botGroupMarker(entry.group.name) };
+  });
+  const toggleGroup = (name: string) =>
+    setExpandedGroups((names) =>
+      names.includes(name) ? names.filter((open) => open !== name) : [...names, name],
+    );
   return {
     ...section,
     threads: bots,
     expanded,
     showAll,
-    rowStates: new Map(
-      section.rows.map(({ thread, state }) => [
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-        state,
-      ]),
-    ),
+    listItems,
+    rowsByKey: new Map(section.rows.map((row) => [threadKeyOf(row.thread), row])),
+    groupHeaders,
+    groupsKey: expandedGroups.join("\n"),
+    toggleGroup,
     toggle: () => setExpanded((value) => !value),
     toggleShowAll: () => setShowAll((value) => !value),
   };
@@ -237,21 +268,121 @@ function SidebarBotLastRun(props: { readonly timestamp: string | null }) {
   );
 }
 
+function BotGroupChevron(props: { readonly open: boolean }) {
+  return (
+    <ChevronRightIcon
+      aria-hidden
+      className={cn(
+        "size-3 shrink-0 text-sidebar-muted-foreground transition-transform",
+        props.open && "rotate-90",
+      )}
+    />
+  );
+}
+
+/** A collapsed group's dots for each waiting member and the sum of their counts. */
+function BotGroupSummary(props: { readonly group: BotGroupView<BotThread> }) {
+  const { group } = props;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-sidebar-muted-foreground tabular-nums">
+      {group.working ? <Spinner size="xs" tone="muted" /> : null}
+      {group.notices.length > 0 ? (
+        <span aria-hidden className="inline-flex items-center gap-0.5">
+          {group.notices.slice(0, DOCK_LIMIT).map((notice, index) => (
+            <span
+              // oxlint-disable-next-line react/no-array-index-key -- dots carry no identity of their own
+              key={index}
+              className={cn("size-1.5 rounded-full", NOTICE_DOT_CLASS[notice])}
+            />
+          ))}
+        </span>
+      ) : null}
+      {group.count > 0 ? group.count : null}
+    </span>
+  );
+}
+
+/** The row of a group with no lead bot; it only expands and collapses. */
+export function BotGroupHeader(props: {
+  readonly marker: SidebarListMarker;
+  readonly group: BotGroupView<BotThread>;
+  readonly onToggle: (name: string) => void;
+}) {
+  const { group } = props;
+  const bot = useForkBot(group.iconThread.environmentId, group.iconThread.botId);
+  return (
+    <SortableSidebarMarker
+      marker={props.marker}
+      data-testid="sidebar-bot-group"
+      className="-mb-px bg-sidebar-control-surface px-0.5 pb-px"
+    >
+      <button
+        type="button"
+        aria-expanded={group.open}
+        onClick={() => props.onToggle(group.name)}
+        className={cn(
+          "flex h-7 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-start text-sidebar-foreground hover:bg-sidebar-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          !group.open && group.notices.length === 0 && "opacity-55",
+        )}
+      >
+        <span className="inline-flex shrink-0 items-center gap-1">
+          <BotGroupChevron open={group.open} />
+          <ForkBotIcon bot={bot} />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{group.name}</span>
+        {group.open ? null : <BotGroupSummary group={group} />}
+      </button>
+    </SortableSidebarMarker>
+  );
+}
+
 /** What a bot row draws beyond an ordinary row: its icon, its status slot, and its last run on hover. */
 export function sidebarBotRow(
   thread: Pick<EnvironmentThreadShell, "environmentId" | "botId" | "latestRun">,
-  state: BotRowState | undefined,
+  row: BotSectionRow<BotThread> | undefined,
+  onToggleGroup: (name: string) => void,
 ) {
-  const botState = state ?? "quiet";
+  const botState = row?.state ?? "quiet";
   const notice = botNotice(botState, thread);
   const lastRun = thread.latestRun?.completedAt ?? thread.latestRun?.startedAt ?? null;
+  const group = row?.group;
+  const icon = <SidebarBotIcon environmentId={thread.environmentId} botId={thread.botId} />;
   return {
-    icon: <SidebarBotIcon environmentId={thread.environmentId} botId={thread.botId} />,
-    dimmed: !botWantsYou(botState),
+    icon:
+      group === undefined ? (
+        icon
+      ) : (
+        <span className="inline-flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            aria-label={group.name}
+            aria-expanded={group.open}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleGroup(group.name);
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+            className="-m-1 inline-flex cursor-pointer rounded-sm p-1 hover:bg-sidebar-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <BotGroupChevron open={group.open} />
+          </button>
+          {icon}
+        </span>
+      ),
+    label:
+      group === undefined ? undefined : (
+        <span className="min-w-0 flex-1 truncate text-start text-sm font-medium text-foreground">
+          {group.name}
+        </span>
+      ),
+    inGroup: row?.inGroup ?? false,
+    dimmed: row?.dimmed ?? !botWantsYou(botState),
     urgent: botState === "asking",
     // An asking bot shows the row's own "Awaiting Input" or "Pending Approval" status instead.
     status:
-      botState === "working" ? (
+      group !== undefined && !group.open ? (
+        <BotGroupSummary group={group} />
+      ) : botState === "working" ? (
         <SidebarBotStatus notice={null} />
       ) : notice === "done" || notice === "failed" ? (
         <SidebarBotStatus notice={notice} />

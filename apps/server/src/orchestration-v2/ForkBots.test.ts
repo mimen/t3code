@@ -49,6 +49,18 @@ it.describe("parseBotFile", () => {
     });
   });
 
+  it("reads a group and a lead, and only a literal true makes a lead", () => {
+    assert.deepEqual(ForkBots.parseBotFile("---\ngroup: Finance\nlead: true\n---\nBody"), {
+      group: "Finance",
+      lead: true,
+      brief: "Body",
+    });
+    assert.deepEqual(ForkBots.parseBotFile('---\ngroup: Finance\nlead: "yes"\n---\nBody'), {
+      group: "Finance",
+      brief: "Body",
+    });
+  });
+
   it("ignores malformed frontmatter but keeps the body", () => {
     assert.deepEqual(ForkBots.parseBotFile("---\nname: [x\n---\nBody"), { brief: "Body" });
   });
