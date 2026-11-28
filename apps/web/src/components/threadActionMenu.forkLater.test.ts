@@ -29,13 +29,13 @@ describe("Later menu item", () => {
   it("sits right after Snooze, and Snooze lists only timed presets", () => {
     const items = buildThreadActionMenuItems(state);
     const at = items.findIndex((item) => item.id === "snooze");
-    expect(items[at + 1]).toMatchObject({ id: "snooze:someday", label: "Later" });
-    expect(items[at]?.children?.map((child) => child.id)).not.toContain("snooze:someday");
+    expect(items[at + 1]).toMatchObject({ id: "snooze:indefinite", label: "Later" });
+    expect(items[at]?.children?.map((child) => child.id)).not.toContain("snooze:indefinite");
   });
 
   it("gives way to Wake on a snoozed thread", () => {
     const ids = buildThreadActionMenuItems({ ...state, isSnoozed: true }).map((item) => item.id);
     expect(ids).toContain("unsnooze");
-    expect(ids).not.toContain("snooze:someday");
+    expect(ids).not.toContain("snooze:indefinite");
   });
 });

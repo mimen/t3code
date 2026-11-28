@@ -12,18 +12,14 @@ import {
   hasQueuedTurnStart,
   hasUnseenRunFailure,
   pickSnoozePreset,
-  resolveSnoozePresets as resolveAllSnoozePresets, // fork: someday-snooze
-  timedSnoozePresets, // fork: someday-snooze
+  INDEFINITE_SNOOZE_UNTIL,
+  resolveSnoozePresets,
   snoozeWakeLabel,
   threadRaisedHandWhileSnoozed,
   threadWokeAt,
   isThreadWokeUnseen,
   type ThreadSnoozeShell,
 } from "./threadSettled.ts";
-
-// fork: someday-snooze, upstream's cases cover the timed presets only
-const resolveSnoozePresets = (...args: Parameters<typeof resolveAllSnoozePresets>) =>
-  timedSnoozePresets(resolveAllSnoozePresets(...args));
 
 const NOW = "2026-04-10T12:00:00.000Z";
 const SNOOZED_AT = "2026-04-10T09:00:00.000Z";
@@ -410,9 +406,22 @@ describe("resolveSnoozePresets", () => {
   const formatTime = (date: Date) =>
     `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
   const menu = (now: Date, presets?: ReadonlyArray<SnoozePresetSetting>) =>
-    resolveSnoozePresets(now, { formatTime, ...(presets ? { presets } : {}) }).map(
-      (preset) => `${preset.label} ${preset.whenLabel}`,
-    );
+    resolveSnoozePresets(now, { formatTime, ...(presets ? { presets } : {}) })
+      .filter((preset) => preset.id !== "indefinite")
+      .map((preset) => `${preset.label} ${preset.whenLabel}`);
+
+  it("always ends with an indefinite snooze that never wakes", () => {
+    const presets = resolveSnoozePresets(localDate(2026, 4, 8, 20), { presets: [] });
+    expect(presets).toEqual([
+      {
+        id: "indefinite",
+        label: "Indefinitely",
+        whenLabel: "",
+        snoozedUntil: INDEFINITE_SNOOZE_UNTIL,
+      },
+    ]);
+    expect(snoozeWakeLabel(INDEFINITE_SNOOZE_UNTIL, { now: NOW })).toBe("later"); // fork: someday-snooze
+  });
 
   it("lists custom presets soonest first and names the day when the label does not", () => {
     // Wednesday 20:00.
@@ -446,7 +455,7 @@ describe("resolveSnoozePresets", () => {
         { kind: "at", day: "monday", time: "09:00" },
       ],
     });
-    expect(presets.map((preset) => preset.id)).toEqual(["at:monday:09:00"]);
+    expect(presets.map((preset) => preset.id)).toEqual(["at:monday:09:00", "indefinite"]);
     expect(new Date(presets[0]!.snoozedUntil)).toEqual(localDate(2026, 4, 20, 9));
   });
 

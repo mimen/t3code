@@ -2,7 +2,7 @@
 import * as DateTime from "effect/DateTime";
 import { DEFAULT_SNOOZE_PRESETS, type SnoozePresetSetting } from "@t3tools/contracts/settings";
 
-import { isSomedaySnooze, somedaySnoozePreset } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
+import { isSomedaySnooze } from "./forkSomedaySnooze.ts"; // fork: someday-snooze
 import type { EnvironmentThreadShell, PendingSubagentRequest } from "./models.ts";
 import { mFallback, msg } from "gt-i18n";
 import type { MFunctionType } from "gt-i18n/types";
@@ -212,6 +212,13 @@ const WEEKDAY_INDEX = {
   saturday: 6,
 } as const;
 
+/** A wake so far out it never comes; the thread stays snoozed until woken by hand. */
+export const INDEFINITE_SNOOZE_UNTIL = "9999-12-31T23:59:59.000Z";
+
+export function isIndefiniteSnooze(snoozedUntil: string): boolean {
+  return Date.parse(snoozedUntil) >= Date.parse(INDEFINITE_SNOOZE_UNTIL);
+}
+
 export interface SnoozePreset {
   readonly id: string;
   readonly label: string;
@@ -371,7 +378,12 @@ export function resolveSnoozePresets(
         seen.add(wakeMinute(preset));
         return true;
       })
-      .concat(somedaySnoozePreset(resolve)) // fork: someday-snooze
+      .concat({
+        id: "indefinite",
+        label: resolve(msg("Indefinitely", { $context: "snooze until woken by hand" })),
+        whenLabel: "",
+        snoozedUntil: INDEFINITE_SNOOZE_UNTIL,
+      })
   );
 }
 
@@ -406,12 +418,13 @@ export function snoozeWakeLabel(
   options: { readonly now: string },
   resolve: MFunctionType = mFallback,
 ): string {
+  if (isSomedaySnooze(snoozedUntil))
+    return resolve(msg("later", { $context: "a thread saved for later" })); // fork: someday-snooze
+  if (isIndefiniteSnooze(snoozedUntil)) return "∞";
   const wakeMs = Date.parse(snoozedUntil);
   const nowMs = Date.parse(options.now);
   const now = () => resolve(msg("now", { $context: "a snoozed thread wakes now" }));
   if (Number.isNaN(wakeMs) || Number.isNaN(nowMs)) return now();
-  if (isSomedaySnooze(snoozedUntil))
-    return resolve(msg("later", { $context: "a thread saved for later" })); // fork: someday-snooze
   if (wakeMs <= nowMs) return now();
   // Count clock minutes: callers pass a minute-floored or live `now`, and durations keep seconds.
   const minutes = Math.max(1, Math.floor(wakeMs / 60_000) - Math.floor(nowMs / 60_000));
