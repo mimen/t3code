@@ -223,6 +223,31 @@ describe("bot groups", () => {
     ]);
   });
 
+  it("lines an ungrouped bot up with a leadless group, so the group never reads as its child", () => {
+    const doctor = bot("Bot Doctor · 9", { hasPendingUserInput: true });
+    const asking = bot("Expense Organizer · 4", { hasPendingUserInput: true });
+    const section = resolveBotsSection([doctor, asking, reconciler], {
+      ...closed,
+      grouping: (thread) => (thread === doctor ? null : { group: "Finance" }),
+      expandedGroups: new Set(["Finance"]),
+    });
+    expect(shape(section)).toEqual(["Bot Doctor · 9", "[Finance]", "  Expense Organizer · 4"]);
+    const [doctorRow, organizerRow] = section.rows;
+    expect(doctorRow).toMatchObject({ inGroup: false, gutter: true });
+    expect(organizerRow).toMatchObject({ inGroup: true, gutter: false });
+    expect(resolveBotsSection([doctor], closed).rows[0]?.gutter).toBe(false);
+  });
+
+  it("keeps the live lead thread as the group row when a settled helper shares its bot", () => {
+    const helper = bot("Briefing sweep of sources", { settledOverride: "settled" });
+    const section = resolveBotsSection([helper, lead, bookings], {
+      ...closed,
+      grouping: (thread) =>
+        thread === bookings ? { group: "UW27" } : { group: "UW27", lead: true },
+    });
+    expect(section.rows[0]?.thread).toBe(lead);
+  });
+
   it("hides a quiet group until Show all, and draws no groups while the section is collapsed", () => {
     const quiet = resolveBotsSection([marketing, reconciler], { ...closed, grouping });
     expect(quiet.entries).toEqual([]);

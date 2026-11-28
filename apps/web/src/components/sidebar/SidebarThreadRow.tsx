@@ -1366,7 +1366,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           sortable?.isDragging && "relative z-20",
           bot && "-mb-px bg-sidebar-control-surface px-0.5 pb-px", // fork: bots
           props.bot?.inGroup && // fork: bots
-            "relative ps-6 before:absolute before:inset-y-0 before:start-4.5 before:w-px before:bg-sidebar-border",
+            "relative ps-10.5 before:absolute before:inset-y-0 before:start-8.75 before:w-px before:bg-sidebar-border",
         )}
       >
         <ThreadHoverCardTrigger

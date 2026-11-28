@@ -350,7 +350,14 @@ export function sidebarBotRow(
   return {
     icon:
       group === undefined ? (
-        icon
+        row?.gutter ? (
+          <span className="inline-flex shrink-0 items-center gap-1">
+            <span aria-hidden className="size-3 shrink-0" />
+            {icon}
+          </span>
+        ) : (
+          icon
+        )
       ) : (
         <span className="inline-flex shrink-0 items-center gap-1">
           <button
