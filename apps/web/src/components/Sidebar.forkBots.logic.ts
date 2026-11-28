@@ -85,6 +85,8 @@ export interface BotSectionRow<T> {
   /** Set on a group's lead, whose row stands for the whole group. */
   readonly group?: BotGroupView<T>;
   readonly inGroup: boolean;
+  /** An ungrouped row keeps a chevron's width when groups show, so its icon lines up with theirs. */
+  readonly gutter: boolean;
 }
 
 /** The bots block in display order: thread rows, and a header for each group with no lead. */
@@ -114,6 +116,7 @@ export function resolveBotsSection<T extends BotThread>(
     state,
     dimmed: !botWantsYou(state),
     inGroup: false,
+    gutter: false,
   });
 
   type Unit = { name: string; asking: boolean; entries: BotSectionEntry<T>[] };
@@ -134,7 +137,9 @@ export function resolveBotsSection<T extends BotThread>(
     groups.set(name, [...(groups.get(name) ?? []), entry]);
   }
   for (const [name, members] of groups) {
-    const lead = members.find(({ thread }) => input.grouping?.(thread)?.lead === true);
+    const leads = members.filter(({ thread }) => input.grouping?.(thread)?.lead === true);
+    // A settled helper thread that shares the lead's bot never stands in for the lead.
+    const lead = leads.find(({ thread }) => thread.settledOverride !== "settled") ?? leads[0];
     const wantsYou = members.some(({ state }) => botWantsYou(state));
     if (!input.showAll && !wantsYou && !members.some(({ thread }) => isRoute(thread))) continue;
     const open = input.expandedGroups?.has(name) ?? false;
@@ -170,12 +175,18 @@ export function resolveBotsSection<T extends BotThread>(
     }
     units.push({ name, asking: members.some(({ state }) => state === "asking"), entries });
   }
-  const entries = units
+  const sorted = units
     .toSorted(
       (left, right) =>
         Number(right.asking) - Number(left.asking) || left.name.localeCompare(right.name),
     )
     .flatMap((unit) => unit.entries);
+  const hasGroups = sorted.some((entry) => entry.kind === "group-header" || entry.row.group);
+  const entries = sorted.map((entry): BotSectionEntry<T> =>
+    entry.kind === "row" && hasGroups && !entry.row.inGroup && !entry.row.group
+      ? { kind: "row", row: { ...entry.row, gutter: true } }
+      : entry,
+  );
   const rows = entries.flatMap((entry) => (entry.kind === "row" ? [entry.row] : []));
   const needsYou = states
     .filter(({ state }) => botWantsYou(state))
