@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off -- resolveSnoozePresets takes a local Date.
 import { describe, expect, it } from "vite-plus/test";
 
 import { splitLaterSnoozes, timedSnoozePresets } from "./forkSomedaySnooze.ts";
